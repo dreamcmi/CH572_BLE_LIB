@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CH572 BLE 库（静态库 + ROM 镜像）—— 运行流程与构建流程</title>
+<style>
+  :root{
+    --bg:#0f1420; --panel:#161d2c; --panel2:#1c2536; --line:#2a3448;
+    --fg:#dde5f2; --dim:#8d9bb5; --accent:#4ea1ff; --accent2:#39d98a;
+    --warn:#ffb545; --bad:#ff6b6b; --purple:#b98cff; --code:#0b0f18;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:"Microsoft YaHei","PingFang SC","Segoe UI",system-ui,sans-serif;
+    line-height:1.75; font-size:15px;
+  }
+  .wrap{max-width:1200px;margin:0 auto;padding:32px 24px 96px}
+  header{border-bottom:1px solid var(--line); padding-bottom:24px; margin-bottom:32px}
+  h1{font-size:29px;margin:0 0 10px;letter-spacing:.5px}
+  h1 .sub{color:var(--accent);font-weight:400;font-size:16px;display:block;margin-top:8px}
+  h2{font-size:22px;margin:48px 0 18px;padding-left:14px;border-left:4px solid var(--accent)}
+  h3{font-size:17px;margin:28px 0 12px;color:var(--accent2)}
+  h4{font-size:15.5px;margin:20px 0 8px;color:var(--warn)}
+  p{margin:10px 0}
+  code{
+    background:var(--code);border:1px solid var(--line);border-radius:4px;
+    padding:1px 6px;font-family:Consolas,"Cascadia Mono",monospace;font-size:13.5px;
+    color:#8fd6ff;
+  }
+  pre{
+    background:var(--code);border:1px solid var(--line);border-radius:8px;
+    padding:16px 18px;overflow-x:auto;font-family:Consolas,"Cascadia Mono",monospace;
+    font-size:12.8px;line-height:1.62;
+  }
+  pre code{background:none;border:none;padding:0;color:#c9d6e8}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px 22px;margin:18px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+  @media(max-width:900px){.grid2,.grid3{grid-template-columns:1fr}}
+  table{border-collapse:collapse;width:100%;margin:16px 0;font-size:14px}
+  th,td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:#b9c8e0;font-weight:600}
+  tr:nth-child(even) td{background:rgba(255,255,255,.015)}
+  .ok{color:var(--accent2);font-weight:600}
+  .no{color:var(--bad);font-weight:600}
+  .wa{color:var(--warn);font-weight:600}
+  .pu{color:var(--purple);font-weight:600}
+  .mono{font-family:Consolas,"Cascadia Mono",monospace}
+  .badge{display:inline-block;padding:1px 9px;border-radius:20px;font-size:12px;font-weight:600;vertical-align:middle}
+  .b-ok{background:rgba(57,217,138,.15);color:var(--accent2);border:1px solid rgba(57,217,138,.4)}
+  .b-no{background:rgba(255,107,107,.15);color:var(--bad);border:1px solid rgba(255,107,107,.4)}
+  .b-wa{background:rgba(255,181,69,.15);color:var(--warn);border:1px solid rgba(255,181,69,.4)}
+  .b-pu{background:rgba(185,140,255,.15);color:var(--purple);border:1px solid rgba(185,140,255,.4)}
+
+  .flow{margin:20px 0}
+  .step{display:flex;gap:16px;align-items:flex-start;position:relative;padding-bottom:6px}
+  .step:not(:last-child)::before{
+    content:"";position:absolute;left:17px;top:40px;bottom:-4px;width:2px;
+    background:linear-gradient(180deg,var(--line),transparent);
+  }
+  .num{flex:0 0 36px;height:36px;border-radius:50%;background:var(--panel2);
+    border:2px solid var(--accent);color:var(--accent);display:flex;align-items:center;
+    justify-content:center;font-weight:700;font-size:15px;z-index:1}
+  .num.g{border-color:var(--accent2);color:var(--accent2)}
+  .num.p{border-color:var(--purple);color:var(--purple)}
+  .step .body{flex:1;padding-bottom:18px}
+  .step .title{font-weight:600;margin-bottom:4px;font-size:15.5px}
+  .step .desc{color:var(--dim);font-size:14px}
+
+  .layers{display:flex;flex-direction:column;gap:6px;margin:18px 0}
+  .layer{border:1px solid var(--line);border-radius:8px;padding:10px 16px;
+    display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+  .layer .lname{font-weight:600}
+  .layer .lfile{font-family:Consolas,monospace;font-size:12.8px;color:var(--accent)}
+  .l-app{background:rgba(78,161,255,.10)}
+  .l-gap{background:rgba(57,217,138,.10)}
+  .l-hal{background:rgba(255,181,69,.12);border-color:rgba(255,181,69,.45)}
+  .l-rom{background:rgba(185,140,255,.12);border-color:rgba(185,140,255,.5)}
+  .l-drv{background:rgba(140,150,175,.08)}
+
+  .note{border-left:4px solid var(--warn);background:rgba(255,181,69,.07);
+    border-radius:0 8px 8px 0;padding:14px 18px;margin:18px 0}
+  .note.danger{border-color:var(--bad);background:rgba(255,107,107,.07)}
+  .note.good{border-color:var(--accent2);background:rgba(57,217,138,.07)}
+  .note.info{border-color:var(--accent);background:rgba(78,161,255,.07)}
+  .note .nt{font-weight:700;margin-bottom:6px}
+
+  .toc{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 24px}
+  .toc ol{margin:8px 0;padding-left:22px}
+  .toc a{color:var(--accent);text-decoration:none}
+  .toc a:hover{text-decoration:underline}
+
+  .big{font-size:26px;font-weight:700;line-height:1.2}
+  .kpi{text-align:center;padding:14px 8px}
+  .kpi .v{font-size:24px;font-weight:700;color:var(--accent2)}
+  .kpi .v.old{color:var(--dim);font-size:19px}
+  .kpi .l{font-size:12.5px;color:var(--dim);margin-top:4px}
+
+  footer{margin-top:60px;padding-top:22px;border-top:1px solid var(--line);color:var(--dim);font-size:13px}
+  .sw{display:inline-block;padding:2px 10px;border-radius:6px;font-size:12.5px;font-weight:600}
+  .sw-a{background:rgba(78,161,255,.18);color:var(--accent)}
+  .sw-b{background:rgba(185,140,255,.18);color:var(--purple)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>CH572 BLE 库：静态库 + ROM 镜像（hex/bin）
+    <span class="sub">运行流程 · 构建流程 · 架构分层 · 两种方式对比</span>
+  </h1>
+  <p style="color:var(--dim);margin-top:14px">
+    本页说明拿到的这套东西「跑起来是什么样」「怎么编译出来」「两种方式怎么选」。
+    建议阅读顺序：先看方案对比 → 架构分层 → 运行流程 → 构建流程。
+  </p>
+</header>
+
+<div class="toc">
+  <strong>目录</strong>
+  <ol>
+    <li><a href="#choose">两种方式怎么选（先看这个）</a></li>
+    <li><a href="#arch">架构分层：这套东西到底提供了什么</a></li>
+    <li><a href="#romlayout">ROM 镜像的内存布局</a></li>
+    <li><a href="#runtime">运行流程（设备端上电到收发数据）</a></li>
+    <li><a href="#dataflow">数据流：手机 ↔ CH572 一次收发经过哪些层</a></li>
+    <li><a href="#build">构建流程：从源码到 hex</a></li>
+    <li><a href="#hex"><span class="pu">★ hex 是怎么生成的（重点）</span></a></li>
+    <li><a href="#ram">Flash / RAM 布局与资源占用</a></li>
+    <li><a href="#check">构建后的四道自检</a></li>
+    <li><a href="#boundary">能力边界速查表</a></li>
+  </ol>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="choose">1. 两种方式怎么选（先看这个）</h2>
+
+<p>同一个 <code>ble_uart</code> 示例、同一套应用源码，只差编译宏与链接参数：</p>
+
+<div class="grid3">
+  <div class="panel kpi">
+    <div class="v old">80,276 B</div>
+    <div class="l">静态库方式 · 应用代码</div>
+  </div>
+  <div class="panel kpi">
+    <div class="v">6,140 B</div>
+    <div class="l">ROM 方式 · 应用代码</div>
+  </div>
+  <div class="panel kpi">
+    <div class="v">↓ 92%</div>
+    <div class="l">代码体积降幅</div>
+  </div>
+</div>
+
+<table>
+  <tr>
+    <th style="width:26%">对比项</th>
+    <th><span class="sw sw-a">方式 A</span> 静态库</th>
+    <th><span class="sw sw-b">方式 B</span> ROM 镜像</th>
+  </tr>
+  <tr><td>库形式</td><td class="mono">lib/libCH572BLE.a</td><td class="mono">lib/CH572BLE_ROM.hex / .bin</td></tr>
+  <tr><td>应用头文件</td><td class="mono">ch572_ble.h</td><td class="mono">CH572BLE_ROM.h</td></tr>
+  <tr><td>编译宏</td><td>无</td><td class="mono">CH572BLE_ROM=1</td></tr>
+  <tr><td>链接参数</td><td class="mono">-lCH572BLE -lISP572</td><td class="mono">只 -lISP572</td></tr>
+  <tr><td>应用 <code>text</code></td><td class="mono">80,276 B</td><td class="mono ok">6,140 B</td></tr>
+  <tr><td>应用 hex 大小</td><td class="mono">225 KB</td><td class="mono ok">19 KB</td></tr>
+  <tr><td>可用栈空间</td><td class="mono">1,384 B</td><td class="mono ok">1,712 B</td></tr>
+  <tr><td>烧录</td><td>一个 hex 搞定</td><td>先烧 ROM（88 KB），再烧应用</td></tr>
+  <tr><td>适合场景</td><td>开发调试 · 小批量 · 不做 OTA</td><td class="ok">量产 · 需要 OTA</td></tr>
+</table>
+
+<div class="note info">
+  <div class="nt">怎么选</div>
+  <strong>开发阶段</strong>用静态库方式（一个 hex 烧进去就能跑，最省事）。<br>
+  <strong>量产 / 需要 OTA</strong> 切 ROM 方式：升级包从 229 KB 降到 19 KB，
+  而且升级过程不动协议栈，变砖风险低。
+</div>
+
+<!-- ============================================================ -->
+<h2 id="arch">2. 架构分层：这套东西到底提供了什么</h2>
+
+<p>从下往上看就是软件栈。<span class="wa">橙色</span>是本工程补的 HAL 层，
+<span class="pu">紫色</span>是 ROM 方式特有的部分。</p>
+
+<h3><span class="sw sw-a">方式 A</span> 静态库：协议栈编进应用固件</h3>
+<div class="layers">
+  <div class="layer l-app"><span class="lname">应用层</span>
+    <span class="lfile">examples/ble_uart/src/*.c</span></div>
+  <div class="layer l-gap"><span class="lname">GAP 角色层 / GATT 服务层</span>
+    <span class="lfile">GAPRole_Peripheral* · GATTServApp_*</span></div>
+  <div class="layer l-hal"><span class="lname">HAL 硬件抽象层　<span class="badge b-wa">本工程新增</span></span>
+    <span class="lfile">hal/HAL.c · include/ch572_ble.h</span></div>
+  <div class="layer l-rom"><span class="lname">BLE 协议栈（二进制，编译进应用）</span>
+    <span class="lfile">lib/libCH572BLE.a（≈80 KB 进应用固件）</span></div>
+  <div class="layer l-drv"><span class="lname">标准外设驱动 + 启动 + 链接脚本</span>
+    <span class="lfile">src/StdPeriphDriver/ · src/Startup/ · src/Ld/Link.ld</span></div>
+</div>
+
+<h3><span class="sw sw-b">方式 B</span> ROM 镜像：协议栈固化在 Flash 固定段</h3>
+<div class="layers">
+  <div class="layer l-app"><span class="lname">应用层（只剩业务逻辑，6 KB）</span>
+    <span class="lfile">examples/ble_uart/src/main_rom.c 等</span></div>
+  <div class="layer l-gap"><span class="lname">GAP 角色层 / GATT 服务层</span>
+    <span class="lfile">同上，但 API 变成对 ROM 绝对地址的调用</span></div>
+  <div class="layer l-hal"><span class="lname">HAL 层　<span class="badge b-wa">本工程新增</span></span>
+    <span class="lfile">hal/HAL.c（留在应用里，负责启动协议栈 + 注册中断钩子）</span></div>
+  <div class="layer l-rom"><span class="lname">ROM 镜像边界　<span class="badge b-pu">固定地址</span></span>
+    <span class="lfile">CH572BLE_ROM.h：API → BLE_LIB_JT(n) 宏</span></div>
+  <div class="layer l-rom"><span class="lname">BLE 协议栈 ROM 镜像（88 KB，烧一次不动）</span>
+    <span class="lfile">lib/CH572BLE_ROM.hex @ 0x00020000</span></div>
+  <div class="layer l-drv"><span class="lname">CH572 硬件　<span style="color:var(--dim);font-weight:400">RISC-V3C · 240KB Flash · 12KB RAM</span></span>
+    <span class="lfile">—</span></div>
+</div>
+
+<div class="note">
+  <div class="nt">为什么必须补 HAL 层？</div>
+  WCH 的 CH572 SDK 里只有 <code>HAL.h</code>（声明了 <code>CH57x_BLEInit()</code>），
+  <strong>却没有 <code>HAL.c</code></strong>。协议栈二进制通过 <code>bleConfig_t</code>
+  结构体接收配置和 6 个硬件回调，而"填结构体、注册回调、调用 <code>BLE_LibInit()</code>"
+  这套胶水代码必须由用户自己写 —— 官方漏给了。
+  连 <code>CONFIG.h</code> 里都还留着 <code>#include "CH57xBLE_ROM.h"</code>
+  （该文件在 CH572 EVT 里并不存在）的分支，说明这套 SDK 是从 CH59x 移植裁剪过来的。
+</div>
+
+<!-- ============================================================ -->
+<h2 id="romlayout">3. ROM 镜像的内存布局</h2>
+
+<h3>镜像内部（严格对齐 WCH 官方约定）</h3>
+<pre><code>ROM_BASE = 0x00020000（可改）
+
+ROM_BASE + 0x00    8 字节     镜像标识
+                              +0x00  uint32 魔数 0x43483537（"CH57"，小端）
+                              +0x04  uint32 保留
+ROM_BASE + 0x08   44 字节     UUID 表（22 项 × 2 字节，小端 GATT UUID）
+ROM_BASE + 0x34  156×4 字节   函数跳转表
+之后                          版本字符串 "CH572_BLE_ROM_V1.0"
+之后                          代码 + 只读数据
+
+总计：89,316 字节（87.2 KB），地址范围 0x00020000 - 0x00035CE3</code></pre>
+
+<div class="note good">
+  <div class="nt">这个布局不是猜的</div>
+  是从官方 <code>CH59xBLE_ROM_PERI.hex</code> 反解出来的：
+  用 <code>tools/rom_inspect.py</code> 可以清楚看到它的
+  <code>+0x08</code> 是 UUID 表（<code>0x1800 / 0x1801 / 0x2800 ...</code>，与官方头文件下标一一对应）、
+  <code>+0x34</code> 是函数跳转表、<code>JT(0)</code> 指向版本字符串。
+  本工程完全照搬这套约定，所以应用侧用法与 <code>CH59xBLE_ROM.h</code> 一致。
+</div>
+
+<h3>Flash 分区（ROM 方式）</h3>
+<pre><code>CH572 用户 Flash = 240 KB = 0x00000 - 0x3BFFF
+
+0x00000000 - 0x0001EFFF  124 KB   app 主体（连续一整块）← 只更新这一块
+0x0001F000 - 0x0001FFFF    4 KB   SNV 绑定信息存储区（运行期写，不烧录）
+0x00020000 - 0x00035CE3  ~88 KB   BLE 协议栈 ROM 镜像 ← 先烧一次，不再改动
+0x00035CE4 - 0x0003BFFF  ~25 KB   余量（ROM 将来长大了可往后扩）
+0x0003C000 - 0x0003FFFF   16 KB   芯片固定占用（BootLoader + INFO）</code></pre>
+
+<p>分区在两边都有<strong>强制保证</strong>，不是靠人记：</p>
+<ul>
+  <li>ROM 侧：<code>rom/rom_link.ld</code> 里 <code>LENGTH = 208K</code>，超了链接失败</li>
+  <li>应用侧：<code>src/Ld/Link_rom.ld</code> 里 <code>FLASH_ROM_END = 0x1F000</code>（= ROM 基址 0x20000 − SNV 4 KB）</li>
+  <li>头部布局：链接脚本用 <code>ASSERT</code> 断言 <code>.rom_header</code> 必须正好 0x34 字节</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="runtime">4. 运行流程（设备端上电到收发数据）</h2>
+
+<div class="flow">
+
+  <div class="step">
+    <div class="num">1</div>
+    <div class="body">
+      <div class="title">硬件复位 → 启动文件</div>
+      <div class="desc">
+        <code>src/Startup/startup_CH572.S</code> 的 <code>_start</code> 执行：
+        关全局中断 → 清 <code>bss</code> → 把 <code>.highcode</code> 从 Flash 搬到 RAM
+        （CH572 的高速代码段必须跑在 RAM）→ 初始化栈指针 → 跳 <code>main()</code>
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num">2</div>
+    <div class="body">
+      <div class="title">配置系统时钟</div>
+      <div class="desc">
+        <pre><code>R16_PIN_ALTERNATE &amp;= ~RB_PIN_DEBUG_EN;   // 关两线调试口
+HSECFG_Capacitance(HSECap_18p);           // 32MHz 晶振负载电容
+SetSysClock(CLK_SOURCE_HSE_PLL_100MHz);   // PLL 到 100MHz</code></pre>
+        <span class="wa">BLE 协议栈要求 HSE 必须是 32 MHz。</span>
+        晶振不起振 → 射频不工作 → 手机搜不到设备，这是最常见的翻车点。
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num p">3</div>
+    <div class="body">
+      <div class="title">装 ROM 中断钩子　<span class="badge b-pu">仅 ROM 方式</span>　<span class="badge b-wa">必须做</span></div>
+      <div class="desc">
+        <div class="note danger" style="margin:10px 0">
+          <div class="nt">ROM 方式最容易漏的一步</div>
+          BLE 的基带中断（BB）与链路层中断（LLE）处理函数<strong>在 ROM 里</strong>。
+          应用的启动文件里这两个中断是"弱定义 + 死循环"，
+          不接管的话射频中断一触发就停在死循环 ——
+          表现为"能广播但一连接就死"或者"完全连不上"。
+        </div>
+        <pre><code>static rom_app_hooks_t hooks = { .magic = ROM_HOOK_MAGIC };
+
+const rom_handles_t *h = CH572BLE_ROM_GetHandles();  // 取 ROM 中断入口
+hooks.ble_irq_handler = h-&gt;bb_irq;    // 基带中断 → ROM 实现
+hooks.lle_irq_handler = h-&gt;lle_irq;   // 链路层中断 → ROM 实现
+hooks.rtc_irq_handler = RTC_IRQHandler; // RTC 由应用处理
+
+CH572BLE_ROM_Init(&amp;hooks);            // 注册给 ROM，同时取版本号</code></pre>
+        <span style="color:var(--dim);font-size:13.5px">
+          官方 CH59x 是把这几个入口写到 RAM 固定地址 <code>0x20000000 + n*4</code>，应用再去读。
+          本工程改成 ROM 导出一个取地址函数：省 12 字节 RAM，也不依赖地址约定。
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num">4</div>
+    <div class="body">
+      <div class="title">CH57x_BLEInit() —— 启动协议栈　<span class="badge b-wa">本工程补全的关键函数</span></div>
+      <div class="desc">
+        <pre><code>bleConfig_t cfg;
+tmos_memset(&amp;cfg, 0, sizeof(cfg));
+
+cfg.MEMAddr = (uint32_t)MEM_BUF;   // 协议栈内存堆（应用定义的 5 KB）
+cfg.MEMLen  = BLE_MEMHEAP_SIZE;
+cfg.SNVAddr = BLE_SNV_ADDR;        // 绑定信息存 Flash 的地址
+cfg.BufNumber = 3;  cfg.BufMaxLen = 27;   // 收发缓存
+cfg.TxPower  = LL_TX_PWR_0_DBM;
+
+// ★ 6 个硬件回调 —— HAL 层存在的全部意义
+cfg.srandCB      = HAL_SrandCB;       // 随机数种子
+cfg.idleCB       = HAL_IdleCB;        // 空闲进低功耗
+cfg.staCB        = HAL_StaCB;         // 异常上报
+cfg.readFlashCB  = HAL_FlashReadCB;   // SNV 读
+cfg.writeFlashCB = HAL_FlashWriteCB;  // SNV 写（含擦除）
+
+BLE_LibInit(&amp;cfg);                    // 协议栈开始运行
+HAL_TimeInit();                       // 建 RTC 时基并注册到 TMOS</code></pre>
+        <span style="color:var(--dim);font-size:13.5px">
+          ROM 方式下协议栈的<strong>代码</strong>在 ROM，但它的<strong>数据</strong>（内存池、
+          各种控制块）仍在 RAM，所以 <code>MEM_BUF</code> 一样要由应用提供。
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num">5</div>
+    <div class="body">
+      <div class="title">HAL_Init() + GAPRole_PeripheralInit()</div>
+      <div class="desc">
+        <code>HAL_Init()</code> 注册 HAL 的 TMOS 任务并启动周期校准事件。<br>
+        <code>GAPRole_PeripheralInit()</code> 初始化从机角色。
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num">6</div>
+    <div class="body">
+      <div class="title">应用初始化：配置广播 + 注册 GATT 服务</div>
+      <div class="desc">
+        <pre><code>BLE_UART_Init();
+  ├─ TMOS_ProcessEventRegister(BLE_UART_ProcessEvent)   // 注册自己的任务
+  ├─ GAPRole_SetParameter(GAPROLE_ADVERT_DATA,  …)      // 广播数据
+  ├─ GAPRole_SetParameter(GAPROLE_SCAN_RSP_DATA, …)     // 扫描响应（放设备名）
+  ├─ GAPRole_SetParameter(GAPROLE_ADVERT_ENABLED, TRUE) // 使能广播
+  ├─ GAP_SetParamValue(TGAP_DISC_ADV_INT_MIN/MAX, 160)  // 广播间隔 100ms
+  ├─ GAPBondMgr_SetParameter(…配对参数…)
+  ├─ GGS_AddService()          // GAP 服务
+  ├─ GATTServApp_AddService()  // GATT 服务
+  ├─ BLE_UART_AddService()     // ★ 自定义 0xFFE0 服务
+  └─ tmos_set_event(taskID, BLE_UART_START_DEVICE_EVT)</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num">7</div>
+    <div class="body">
+      <div class="title">进入 TMOS 主循环 —— 开始广播</div>
+      <div class="desc">
+        <pre><code>while(1)
+{
+    TMOS_SystemProcess();     // ★ 所有 BLE 事件都在这里被处理
+}</code></pre>
+        ROM 方式下 <code>TMOS_SystemProcess</code> 是一个宏，展开成对 ROM 里调度器的间接调用。<br><br>
+        <span class="no">主循环里绝对不能写阻塞代码</span>（<code>delay</code>、死等串口等），
+        否则会错过连接事件时序，表现为"连不上"或"连上就掉"。
+        需要延时请用 <code>tmos_start_task()</code> 注册 TMOS 定时事件。
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num g">8</div>
+    <div class="body">
+      <div class="title">手机连接 → 状态回调被触发</div>
+      <div class="desc">
+        <code>bleUartStateCB()</code> 收到 <code>GAPROLE_CONNECTED</code>：
+        <pre><code>bleUartConnHandle = pLink-&gt;connectionHandle;
+BLE_UART_OnLinkEstablished(bleUartConnHandle);   // 通知服务层可以发通知了
+tmos_start_task(taskID, BLE_UART_PERIODIC_EVT, …);
+tmos_set_event(taskID, BLE_UART_PARAM_UPDATE_EVT);  // 请求更合适的连接参数</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num g">9</div>
+    <div class="body">
+      <div class="title">断开连接 → 复位状态 → 重新广播</div>
+      <div class="desc">
+        连接句柄复位，<code>linkDB</code> 回调里 <code>GATTServApp_InitCharCfg()</code> 复位 CCC，
+        然后自动回到广播状态等待下一次连接。
+        <div class="note" style="margin-top:10px">
+          <div class="nt">为什么必须复位 CCC？</div>
+          CCC（客户端特征配置）记录着"手机是否使能了 Notify"。
+          不复位的话下次连接会残留上一次的使能状态，
+          导致设备在手机还没订阅时就尝试发通知 → 发送失败或行为异常。
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============================================================ -->
+<h2 id="dataflow">5. 数据流：手机 ↔ CH572 一次收发经过哪些层</h2>
+
+<div class="grid2">
+  <div class="panel">
+    <h3 style="margin-top:0">下行：手机 → CH572（写特征值 0xFFE3）</h3>
+    <pre><code>手机 App
+  │  ATT Write Request
+  ▼
+[ 射频 ] ─► [ 链路层 LL ] ─► [ L2CAP ]
+                                │
+                                ▼
+                           [ ATT Server ]
+                                │
+                                ▼
+                     [ GATT Server 分发 ]
+                                │
+                                ▼
+      bleUart_WriteAttrCB()  ◄──┘
+           ├─ 校验 offset / len
+           ├─ tmos_memcpy(pAttr-&gt;pValue, pValue, len)
+           └─ bleUart_OnPhoneData(pValue, len)
+                 ├─ 存到 CHAR2（便于手机回读校验）
+                 ├─ BLE_UART_SendData()  ← 示例做了回环
+                 └─ 回调应用层（可在此写串口）</code></pre>
+  </div>
+
+  <div class="panel">
+    <h3 style="margin-top:0">上行：CH572 → 手机（Notify 0xFFE4）</h3>
+    <pre><code>业务代码
+  │  BLE_UART_SendData(data, len)
+  ▼
+GATT_bm_alloc()   ← ★ 必须从协议栈内存池申请缓冲
+  │                  （不能用自己的数组）
+  ▼
+tmos_memcpy(noti.pValue, data, len)
+  │
+  ▼
+BLE_UART_Notify(connHandle, &amp;noti)
+  ├─ GATTServApp_ReadCharCfg() 检查手机是否已使能 Notify
+  │     └─ 没使能 → 返回 bleIncorrectMode，并 GATT_bm_free() 释放
+  ├─ pNoti-&gt;handle = attrTbl[CHAR4_VALUE_IDX].handle   ← 下标必须对
+  └─ GATT_Notification()
+        │
+        ▼
+   [ ATT Server ] ─► [ L2CAP ] ─► [ LL ] ─► [ 射频 ] ─► 手机</code></pre>
+  </div>
+</div>
+
+<div class="note danger">
+  <div class="nt">两个必须记住的内存管理规则</div>
+  <strong>1. 发送缓冲必须从 <code>GATT_bm_alloc()</code> 申请</strong>，不能用局部数组或全局数组，
+  否则协议栈不知道这块内存归它管，异步发送时会读到已被覆盖的数据。<br>
+  <strong>2. 发送失败必须 <code>GATT_bm_free()</code> 释放</strong>，
+  否则内存池会慢慢漏光，最终所有 BLE 操作都返回 <code>bleMemAllocError</code>。
+</div>
+
+<!-- ============================================================ -->
+<h2 id="build">6. 构建流程：从源码到 hex</h2>
+
+<h3><span class="sw sw-a">方式 A</span> 静态库构建</h3>
+<pre><code>powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Target lib</code></pre>
+
+<div class="flow">
+  <div class="step"><div class="num">1</div><div class="body">
+    <div class="title">编译 HAL 层</div>
+    <div class="desc"><code>hal/HAL.c</code>、<code>RTC.c</code>、<code>SLEEP.c</code> → <code>.o</code></div>
+  </div></div>
+  <div class="step"><div class="num">2</div><div class="body">
+    <div class="title">解包官方协议栈</div>
+    <div class="desc"><code>ar x lib/libCH572BLE_PERI.a</code> → 54 个官方 <code>.o</code></div>
+  </div></div>
+  <div class="step"><div class="num g">3</div><div class="body">
+    <div class="title">重新打包成完整静态库</div>
+    <div class="desc"><code>ar rcs lib/libCH572BLE.a &lt;HAL 的 3 个 .o&gt; &lt;协议栈 54 个 .o&gt;</code>
+      → <strong>679,924 字节</strong>，上层只需 <code>-lCH572BLE</code></div>
+  </div></div>
+  <div class="step"><div class="num">4</div><div class="body">
+    <div class="title">编译示例 + 链接</div>
+    <div class="desc"><code>-lCH572BLE -lISP572</code>，用 <code>src/Ld/Link.ld</code></div>
+  </div></div>
+  <div class="step"><div class="num g">5</div><div class="body">
+    <div class="title">生成 hex + 四项自检</div>
+    <div class="desc">体积统计 · 指令集兼容性 · 能力拦截 · RAM 余量</div>
+  </div></div>
+</div>
+
+<h3><span class="sw sw-b">方式 B</span> ROM 镜像构建（三趟链接）</h3>
+<pre><code>powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Target rom</code></pre>
+
+<div class="note">
+  <div class="nt">为什么要三趟链接</div>
+  跳转表的内容（每个 API 的绝对地址）依赖链接结果，而链接又需要跳转表存在 ——
+  循环依赖。解决办法是<strong>先占位、再收敛</strong>。
+</div>
+
+<div class="flow">
+  <div class="step"><div class="num">0</div><div class="body">
+    <div class="title">准备对象</div>
+    <div class="desc">
+      解包协议栈 54 个 <code>.o</code>；编译 ROM 头部 / 中断转接 / 自动生成的兼容桩；
+      编译 ROM 自包含所需的 6 个外设驱动
+    </div>
+  </div></div>
+
+  <div class="step"><div class="num">1</div><div class="body">
+    <div class="title">趟 1：占位链接　<span class="badge b-wa">不开 --gc-sections</span></div>
+    <div class="desc">
+      跳转表先放 156 个 0 占位。目的：让每一个协议栈函数都被保留，
+      从 <code>.map</code> 里取到<strong>全部符号的地址</strong>。
+      <div class="note danger" style="margin-top:8px">
+        <div class="nt">这里开 gc-sections 会前功尽弃</div>
+        <code>--gc-sections</code> 从"根"出发做可达性分析。占位跳转表不引用任何符号，
+        整个协议栈都会被判定为不可达而裁掉，map 里只剩头部几个符号。
+        <strong>若开启，可用 API 会从 94 个降到 14 个。</strong>
+      </div>
+    </div>
+  </div></div>
+
+  <div class="step"><div class="num">2</div><div class="body">
+    <div class="title">趟 2：生成跳转表 + 应用侧头文件</div>
+    <div class="desc">
+      <code>tools/rom_gen.py</code> 用 map 里的符号地址填跳转表（汇编形式，
+      地址由链接器最终确定），同时生成 <code>CH572BLE_ROM.h</code>。
+      <br>跳转表 ABI 沿用官方 <code>CH59xBLE_ROM.h</code> 的下标编号，
+      由 <code>tools/rom_jt_extract.py</code> 抽取（137 个函数 + 22 个 UUID）。
+    </div>
+  </div></div>
+
+  <div class="step"><div class="num">3</div><div class="body">
+    <div class="title">趟 3 / 4：迭代链接　<span class="badge b-ok">开 --gc-sections</span></div>
+    <div class="desc">
+      跳转表现在真实引用了所有要暴露的 API，它们成了 GC 根；
+      那些"只有主机角色才会走到"的死代码被裁掉
+      （连带解决它们引用的、PERI 库根本不存在的符号）。
+      <br>然后用新的 map 重新生成跳转表，消除表自身占位带来的地址偏移，迭代两次收敛。
+      <div class="note good" style="margin-top:8px">
+        <div class="nt">实测效果</div>
+        趟 1（无 gc）全量链接 text 约 103 KB；
+        趟 5（有 gc）最终镜像 text 约 88 KB，<strong>裁掉约 15 KB 死代码</strong>。
+      </div>
+    </div>
+  </div></div>
+
+  <div class="step"><div class="num">5</div><div class="body">
+    <div class="title">最终链接 + 生成 hex/bin</div>
+    <div class="desc">
+      不再重算跳转表，保证"表内容"与"镜像布局"严格一致。<br>
+      产出 <code>CH572BLE_ROM.hex</code>（252,924 字节文本）与
+      <code>.bin</code>（89,900 字节纯二进制）。
+    </div>
+  </div></div>
+
+  <div class="step"><div class="num g">6</div><div class="body">
+    <div class="title">ROM 方式应用构建</div>
+    <div class="desc">
+      加 <code>-DCH572BLE_ROM=1</code>，编译 <code>main_rom.c</code> + 服务层 + HAL + 驱动，
+      用 <code>src/Ld/Link_rom.ld</code> 链接，<strong>不加 <code>-lCH572BLE</code></strong>。
+    </div>
+  </div></div>
+</div>
+
+<h3>MounRiver Studio 路线</h3>
+<pre><code>powershell -ExecutionPolicy Bypass -File scripts\make_mrs_project.ps1
+  ↓  以官方 Peripheral 示例的 .cproject 为模板，精确替换 6 项配置
+  [补丁] option.c.compiler.include.paths   → -I 头文件路径
+  [补丁] option.assembler.include.paths    → -I 汇编头文件路径
+  [补丁] option.c.linker.paths             → -L 库路径
+  [补丁] option.c.linker.libs              → -l CH572BLE / ISP572 / m
+  [补丁] option.c.linker.scriptfile        → -T 本工程 Link.ld
+  [补丁] option.c.compiler.defs            → 条件编译宏
+  ↓
+在 MRS 中：File → Import → Existing Projects into Workspace
+           选择 examples\ble_uart  →  Finish  →  编译 / 下载</code></pre>
+
+<!-- ============================================================ -->
+<h2 id="hex"><span class="pu">★</span> hex 是怎么生成的（重点）</h2>
+
+<div class="note info">
+  <div class="nt">一句话</div>
+  把 WCH 给 CH572 的 BLE 协议栈（一个 <code>.a</code> 库文件）
+  <strong>重定位到固定地址</strong>，再在它开头放一张「函数跳转表」当目录，
+  最后用 <code>objcopy</code> 转成 <code>.hex</code>。
+</div>
+
+<h3>0. 用的工具链</h3>
+<table>
+  <tr><th style="width:34%">项目</th><th>内容</th></tr>
+  <tr><td>工具链位置</td>
+      <td class="mono" style="font-size:12.5px">D:\MounRiver\MounRiver_Studio2\resources\app\resources\win32\components\WCH\Toolchain\RISC-V Embedded GCC12\bin</td></tr>
+  <tr><td>编译器</td><td class="mono">riscv-wch-elf-gcc.exe　(xPack GNU RISC-V Embedded GCC 12.2.0)</td></tr>
+  <tr><td>为什么用它</td><td>它认识两个通用工具链不认识的 WCH 扩展（见下表）</td></tr>
+  <tr><td>自动探测</td><td>构建脚本会自己找到它，不需要手工指定路径</td></tr>
+</table>
+
+<table>
+  <tr><th>WCH 扩展</th><th>用在哪</th><th>通用工具链</th><th>WCH 工具链</th></tr>
+  <tr><td class="mono">mcpy</td>
+      <td><code>core_riscv.h</code> 的 <code>__MCPY()</code>，青稞内核的快速内存拷贝指令</td>
+      <td class="no">✗ 报 unrecognized opcode</td>
+      <td class="ok">✓ 实测生成 3 处</td></tr>
+  <tr><td class="mono">WCH-Interrupt-fast</td>
+      <td><code>CH57x_common.h</code> 的 <code>__INTERRUPT</code>，中断硬件压栈</td>
+      <td class="no">✗ 降级为普通中断</td>
+      <td class="ok">✓ <code>mret</code> 前无寄存器保存代码</td></tr>
+</table>
+
+<p style="color:var(--dim);font-size:13.5px">
+  一个有意思的证据：协议栈自带的 <code>tmos.o</code>、<code>ll_connect.o</code> 里
+  <strong>也含 <code>mcpy</code></strong> —— 说明 WCH 当初就是用这个工具链编的库，
+  现在我们也用同一个，完全对齐。
+</p>
+
+<h3>1. 五趟链接：为什么不能一次搞定</h3>
+
+<p>核心矛盾：<strong>跳转表的内容（每个 API 的绝对地址）依赖链接结果，
+而链接又需要跳转表存在</strong> —— 循环依赖。所以要「先占位、再收敛」。</p>
+
+<div class="grid3">
+  <div class="panel">
+    <h4 style="margin-top:0">输入材料</h4>
+    <ul style="padding-left:18px;font-size:13.5px;line-height:1.9">
+      <li><code>libCH572BLE_PERI.a</code><br><span style="color:var(--dim)">WCH 官方协议栈，54 个 .o</span></li>
+      <li><code>rom/rom_entry.c</code><br><span style="color:var(--dim)">镜像头部（魔数 + UUID 表）</span></li>
+      <li><code>rom/rom_support.c</code><br><span style="color:var(--dim)">中断转接 + 应用钩子表</span></li>
+      <li><code>rom/rom_stub.c</code><br><span style="color:var(--dim)">自动生成的兼容桩</span></li>
+      <li><code>src/StdPeriphDriver/*.c</code><br><span style="color:var(--dim)">6 个外设驱动</span></li>
+    </ul>
+  </div>
+  <div class="panel" style="grid-column:span 2">
+    <h4 style="margin-top:0">链接过程</h4>
+    <pre style="margin:0"><code>趟 1  占位链接（跳转表先放 156 个 0）
+      ├ 目的：让每个函数都被保留，从 .map 拿到全部符号地址
+      ├ <span class="wa">不开 --gc-sections</span>（开了会把整个协议栈裁光）
+      └ 产出：rom_pass1.map
+
+趟 2  生成跳转表 + 应用头文件
+      ├ tools/rom_gen.py 读 rom_pass1.map
+      ├ 产出 build/rom/rom_jt.S        （跳转表汇编）
+      └ 产出 include/CH572BLE_ROM.h    （应用侧头文件）
+
+趟 3  迭代链接 #1（<span class="ok">开 --gc-sections</span>）
+      ├ 跳转表现在真实引用所有 API → 它们成为 GC 根
+      ├ 主机角色死代码被裁掉（连带解决它引用的缺失符号）
+      └ 用新 map 重新生成跳转表，消除表自身占位带来的偏移
+
+趟 4  迭代链接 #2 —— 再收敛一次
+
+趟 5  最终链接
+      └ <span class="ok">不再重算跳转表</span>，保证「表内容」与「镜像布局」严格一致
+         → CH572BLE_ROM.elf</code></pre>
+  </div>
+</div>
+
+<div class="note danger">
+  <div class="nt">趟 1 必须关掉 --gc-sections（实测踩过）</div>
+  <code>--gc-sections</code> 从"根"出发做可达性分析。占位跳转表不引用任何符号，
+  于是整个协议栈被判为不可达而全裁掉 —— <code>.map</code> 里只剩头部几个符号。<br>
+  <strong>实测：开 gc 时可用 API 只剩 14 个（正确应为 94 个）。</strong>
+</div>
+
+<div class="note good">
+  <div class="nt">开 gc 的收益（实测）</div>
+  趟 1（无 gc）全量链接 <code>text</code> 约 103 KB；
+  最终镜像约 89 KB —— <strong>裁掉约 14 KB 只服务主机角色的死代码</strong>。
+</div>
+
+<h3>2. 镜像内部布局</h3>
+<pre><code>ROM_BASE = 0x00020000
+
++0x00    8 字节    镜像标识：<span class="ok">37 35 48 43</span> 00 00 00 00
+                             ↑ 小端读作 0x43483537 = "CH57"
++0x08   44 字节    UUID 表（22 项 × 2 字节）
+                     00 18 = 0x1800 Generic Access
+                     01 18 = 0x1801 Generic Attribute
+                     00 28 = 0x2800 Primary Service
+                     ...
++0x34  624 字节    函数跳转表（156 项 × 4 字节）
+                     第  0 项 → 版本字符串地址
+                     第  1 项 → tmos_rand
+                     第  9 项 → tmos_start_task
+                     第 46 项 → GAPRole_PeripheralInit
+                     ...
+之后              版本字符串 + 代码 + 只读数据
+
+总计：89,316 字节（87.2 KB），地址范围 0x00020000 - 0x00035CE3</code></pre>
+
+<div class="note">
+  <div class="nt">头部布局为什么能用 ASSERT 保证不出错</div>
+  GNU ld 在拼接同一个输出段时按<strong>输入段名的字母序</strong>排列。
+  如果把魔数和 UUID 表都放进 <code>.rom_header</code>，字母序会让 UUID 排在魔数前面。<br>
+  所以拆成 <code>.rom_magic</code> 与 <code>.rom_uuid</code> 两个独立段，
+  在链接脚本里按指定顺序拼，并用 <code>ASSERT</code> 强制校验总长必须 0x34 字节 ——
+  <strong>写错直接链接失败，不会等烧进芯片才发现。</strong>
+</div>
+
+<h3>3. 应用怎么调用 ROM（跳转表的作用）</h3>
+<div class="grid2">
+  <div class="panel">
+    <h4 style="margin-top:0">应用侧头文件里的定义</h4>
+    <pre style="margin:0"><code>#define FUNCITON_BASE_ADDRESSS \
+        (LIB_FLASH_BASE_ADDRESSS + 0x34)
+
+/* 读 (基址 + n*4) 处的 32 位值 = 第 n 个函数的地址 */
+#define BLE_LIB_JT(n) \
+        (*(uint32_t*)( FUNCITON_BASE_ADDRESSS + (n) * 4 ))
+
+/* tmos_start_task = 把第 9 项当地址，转函数指针，调用 */
+#define tmos_start_task \
+  (( BOOL (*)(tmosTaskID, tmosEvents, tmosTimer) ) BLE_LIB_JT(9))
+
+#define GAPRole_PeripheralInit \
+  (( bStatus_t (*)(void) ) BLE_LIB_JT(46))</code></pre>
+  </div>
+  <div class="panel">
+    <h4 style="margin-top:0">效果</h4>
+    <p style="font-size:14px">
+      应用编译时<strong>完全不需要协议栈代码</strong>，
+      只要知道「第 9 项是 <code>tmos_start_task</code>」就够了。
+    </p>
+    <p style="font-size:14px">
+      所以应用固件里没有那 74 KB 协议栈 ——
+      <code>text</code> 从 80,276 字节降到 <strong>6,140 字节</strong>。
+    </p>
+    <p style="font-size:14px;color:var(--dim)">
+      CH572 没有的 43 个 API（主机角色等）在表里填 <code>0</code>，
+      并且头文件里<strong>根本不定义这些宏</strong> ——
+      误用会在<strong>编译期</strong>报错，而不是运行时跳到地址 0。
+    </p>
+  </div>
+</div>
+
+<h3>4. objcopy：从 elf 到 hex</h3>
+<div class="grid2">
+  <div class="panel">
+    <h4 style="margin-top:0">命令</h4>
+    <pre style="margin:0"><code>riscv-wch-elf-objcopy -O ihex   \
+    build/rom/CH572BLE_ROM.elf  \
+    lib/CH572BLE_ROM.hex
+
+riscv-wch-elf-objcopy -O binary \
+    build/rom/CH572BLE_ROM.elf  \
+    lib/CH572BLE_ROM.bin</code></pre>
+  </div>
+  <div class="panel">
+    <h4 style="margin-top:0">hex 文件长什么样</h4>
+    <pre style="margin:0"><code>:020000040000FA        ← 基地址 = 0x0000
+:10000000<span class="ok">37354843</span>00000000...  ← +0x00 魔数 "CH57"
+:10001000<span class="ok">0018011800280128</span>...  ← +0x08 UUID 表
+...
+:00000001FF            ← 文件结束</code></pre>
+    <p style="font-size:13px;color:var(--dim);margin-top:8px">
+      每行格式：<code>:</code> + 字节数 + 地址 + 记录类型 + 数据 + 校验和。
+      HEX 是<strong>文本格式</strong>，每 16 字节数据要配 11 字符行头 + 校验和，
+      所以文件大小 ≈ 数据的 2.8 倍（251 KB 文本 ↔ 89 KB 实际数据）。
+    </p>
+  </div>
+</div>
+
+<h3>5. 生成结果与验证</h3>
+<table>
+  <tr><th>产物</th><th>大小</th><th>说明</th></tr>
+  <tr><td class="mono">lib/CH572BLE_ROM.hex</td><td class="mono">251,288 字节</td><td>Intel HEX 文本，烧录用</td></tr>
+  <tr><td class="mono">lib/CH572BLE_ROM.bin</td><td class="mono">89,316 字节</td><td>纯二进制 = 实际 Flash 占用</td></tr>
+  <tr><td class="mono">lib/CH572BLE_ROM.map</td><td>—</td><td>每个符号的绝对地址</td></tr>
+  <tr><td class="mono">lib/CH572BLE_ROM_JT.md</td><td>—</td><td>跳转表对照表（编号 ↔ API ↔ 是否可用）</td></tr>
+  <tr><td class="mono">include/CH572BLE_ROM.h</td><td>—</td><td>应用侧头文件（自动生成）</td></tr>
+</table>
+
+<pre><code><span class="ok">$ python tools\rom_inspect.py lib\CH572BLE_ROM.hex 0x20000 156</span>
++0x00 魔数 : 0x43483537  <span class="ok">[OK] "CH57"</span>
+UUID 表：识别为已知 GATT UUID 的项数: 22 / 22
+跳转表：项数 156，指向 ROM 内部 98 项，空项 58 项，
+        指向镜像外部 0 项 <span class="ok">[OK]</span>
+结论: <span class="ok">[OK] 镜像结构符合 WCH ROM 约定</span>
+
+<span class="ok">$ python tools\rom_verify.py --bin lib\CH572BLE_ROM.bin --syms ... \</span>
+<span class="ok">      --base 0x20000 --jt-json build\rom\jt_map.json --hdr include\CH572BLE_ROM.h</span>
+地址正确          : 94 项
+本平台无此 API(0) : 43 项
+地址不匹配        : 0 项
+<span class="ok">[通过] 跳转表与镜像完全一致</span>
+结论: <span class="ok">[通过] ROM 镜像、跳转表、头文件三者一致，可以烧录</span></code></pre>
+
+<div class="note danger">
+  <div class="nt">为什么必须逐项核对跳转表</div>
+  跳转表里的地址和镜像里符号的真实地址是<strong>两个不同步骤产生的</strong>，
+  差一轮迭代就全线错位，而且<strong>只有烧进芯片才会暴露</strong>。
+  所以本工程把它做成自动校验：94 项逐个比对，0 项不匹配才算过。
+</div>
+
+<!-- ============================================================ -->
+<h2 id="ram">7. Flash / RAM 布局与资源占用</h2>
+
+<h3>ROM 库镜像本身</h3>
+<table>
+  <tr><th>项目</th><th>数值</th></tr>
+  <tr><td>地址范围</td><td class="mono">0x00020000 - 0x00035CE3</td></tr>
+  <tr><td>bin 文件大小</td><td class="mono">89,316 字节（87.2 KB）</td></tr>
+  <tr><td>hex 文件大小</td><td class="mono">251,288 字节（Intel HEX 文本）</td></tr>
+  <tr><td>镜像内 text / data / bss</td><td class="mono">89,256 / 60 / 1,136 字节</td></tr>
+  <tr><td>跳转表</td><td class="mono">156 项（94 项可用 / 43 项本平台无 / 其余扩展项）</td></tr>
+</table>
+
+<h3>两种方式的应用固件对比</h3>
+<div class="grid2">
+  <div class="panel">
+    <h4 style="margin-top:0"><span class="sw sw-a">方式 A</span> 静态库</h4>
+    <table>
+      <tr><td>text（代码）</td><td class="mono">80,276 B</td></tr>
+      <tr><td>data</td><td class="mono">588 B</td></tr>
+      <tr><td>bss</td><td class="mono">6,272 B</td></tr>
+      <tr><td>hex 文件</td><td class="mono">225 KB</td></tr>
+      <tr><td>可用栈</td><td class="mono">1,384 B</td></tr>
+    </table>
+  </div>
+  <div class="panel">
+    <h4 style="margin-top:0"><span class="sw sw-b">方式 B</span> ROM</h4>
+    <table>
+      <tr><td>text（代码）</td><td class="mono ok">6,140 B</td></tr>
+      <tr><td>data</td><td class="mono">476 B</td></tr>
+      <tr><td>bss</td><td class="mono ok">5,272 B</td></tr>
+      <tr><td>hex 文件</td><td class="mono ok">19 KB</td></tr>
+      <tr><td>可用栈</td><td class="mono ok">1,712 B</td></tr>
+    </table>
+  </div>
+</div>
+<p style="color:var(--dim);font-size:13.5px">
+  ROM 方式还额外省下 1,000 字节 bss —— 因为 ROM 里的 HAL / SNV 缓冲区
+  不再占用应用的 RAM。
+</p>
+
+<div class="note">
+  <div class="nt">RAM 调优的实测教训</div>
+  最初按官方建议用 <code>BLE_MEMHEAP_SIZE = 6144</code>（6 KB），结果 bss 涨到 7,296 字节，
+  <strong>栈只剩 224 字节</strong> —— 一次稍深的调用链就会踩坏 bss，是个隐藏的定时炸弹。<br>
+  降到 <code>512*10 = 5120</code> 后 bss 降到 6,272 字节，
+  <strong>栈有 1,232 字节（ROM 方式 1,712 字节）</strong>，
+  广播 / 连接 / GATT 读写 / Notify / 配对绑定实测全部正常。
+</div>
+
+<!-- ============================================================ -->
+<h2 id="check">8. 构建后的四道自检</h2>
+
+<h3>① 体积与 RAM 余量</h3>
+<pre><code>   text     data      bss      dec      hex   filename
+  80916      588     6272    87776    156e0   ble_uart.elf        (静态库方式)
+   6360      476     5272    12108     2f4c   ble_uart-rom.elf    (ROM 方式)
+
+RAM 余量（在 .map 里找）：
+  0x20002B30   PROVIDE (_ebss = .)        ← bss 结束
+  0x20003000   PROVIDE (_eusrstack = .)   ← 栈顶
+                              ↑ 两者之差 = 可用栈空间</code></pre>
+<p><span class="ok">≥ 1000 B</span> 健康 · <span class="wa">800 B 左右</span> 偏紧 ·
+   <span class="no">&lt; 400 B</span> 几乎一定会栈溢出</p>
+
+<h3>② 指令集兼容性</h3>
+<p>
+  CH572 内核是 <strong>RV32IMBC</strong>：<span class="no">没有 A 扩展（原子指令）</span>、
+  <span class="no">没有浮点单元</span>。用 <code>rv32imac</code> 编译理论上可能生成
+  <code>amo*</code> / <code>lr.w</code> / <code>sc.w</code>，这些指令在 CH572 上会触发非法指令异常直接跑飞。
+</p>
+<pre><code>python tools\isa_check.py build\out\ble_uart.elf
+
+  函数符号: 676 个（只扫描这些真实代码区间）
+  解码指令数: 28998
+  <span class="ok">[通过] 无 A 扩展原子指令、无浮点指令。</span>
+  <span class="ok">[通过] 无标准 RISC-V 之外的 opcode。</span></code></pre>
+<p style="color:var(--dim);font-size:13.5px">
+  实现要点：脚本先从 ELF 符号表取出全部 <code>STT_FUNC</code> 符号，
+  只对真实函数区间解码 —— 直接线性扫描整个 <code>.text</code> 会把里面的
+  字符串和跳转表当成指令，产生大量假阳性（会误报出十几条"浮点指令"和上百条"未知 opcode"，实际全是数据）。
+</p>
+
+<h3>③ ROM 镜像结构（ROM 方式必查）</h3>
+<pre><code>python tools\rom_inspect.py lib\CH572BLE_ROM.hex 0x20000 156
+
+镜像地址范围 : 0x00020000 - 0x00035CE3   数据 89316 字节 (87.8 KB)
++0x00 魔数 : 0x43483537  <span class="ok">[OK] "CH57"</span>
+UUID 表：识别为已知 GATT UUID 的项数: 22 / 22
+函数跳转表：
+  项数            : 156
+  指向 ROM 内部   : 96 项
+  空项(0)         : 52 项（本平台不提供的 API）
+  指向镜像外部    : 0 项 <span class="ok">[OK]</span>
+结论: <span class="ok">[OK] 镜像结构符合 WCH ROM 约定</span></code></pre>
+
+<h3>④ 跳转表逐项核对　<span class="badge b-wa">ROM 方案最容易错的地方</span></h3>
+<p>
+  跳转表里的地址与镜像里符号的真实地址<strong>由不同步骤产生</strong>，
+  差一轮迭代就全线错位，而且只有烧进芯片才会暴露。所以本工程做逐项比对：
+</p>
+<pre><code>python tools\rom_verify.py --bin lib\CH572BLE_ROM.bin --syms lib\CH572BLE_ROM_SYMS.txt `
+    --base 0x20000 --jt-json build\rom\jt_map.json --hdr include\CH572BLE_ROM.h
+
+头部魔数 / UUID 表         <span class="ok">[OK]</span>
+JT(  0) VER_LIB            -> 0x000042A4  <span class="ok">[OK]</span>
+地址正确          : 94 项
+本平台无此 API(0) : 43 项
+地址不匹配        : 0 项
+<span class="ok">[通过] 跳转表与镜像完全一致</span>
+结论: <span class="ok">[通过] ROM 镜像、跳转表、头文件三者一致，可以烧录</span></code></pre>
+
+<p>四道自检全部集成进 <code>scripts\run_tests.ps1</code>，共 <strong>26 项</strong>。</p>
+
+<!-- ============================================================ -->
+<h2 id="boundary">9. 能力边界速查表</h2>
+
+<p>逐符号比对两个 SDK 后得到的结论（详见 <code>docs/架构与适配分析.md</code>）：</p>
+
+<table>
+  <tr><th>功能</th><th>CH572</th><th>CH592</th><th>说明</th></tr>
+  <tr><td>BLE 从机（Peripheral）</td><td class="ok">✔ 支持</td><td class="ok">✔ 支持</td><td>核心场景</td></tr>
+  <tr><td>自定义 GATT 服务（读/写/Notify）</td><td class="ok">✔ 支持</td><td class="ok">✔ 支持</td><td>—</td></tr>
+  <tr><td>配对绑定 / Passkey / 绑定信息存 Flash</td><td class="ok">✔ 支持</td><td class="ok">✔ 支持</td><td>SNV 机制</td></tr>
+  <tr><td>广播者（只广播不连接）</td><td class="ok">✔ 支持</td><td class="ok">✔ 支持</td><td>—</td></tr>
+  <tr><td>连接参数更新 / MTU 协商 / PHY 更新 / RSSI</td><td class="ok">✔ 支持</td><td class="ok">✔ 支持</td><td>—</td></tr>
+  <tr><td>2.4G 私有协议点对点</td><td class="ok">✔ 支持</td><td class="ok">✔ 支持</td><td><code>RF_Tx</code> / <code>RF_Rx</code></td></tr>
+  <tr><td><strong>主机（Central，主动扫描并发起连接）</strong></td><td class="no">✘ 不支持</td><td class="ok">✔ 支持</td><td>缺 649 个主机侧符号 + RAM 不够</td></tr>
+  <tr><td>观察者（只扫描不连接）</td><td class="no">✘ 不支持</td><td class="ok">✔ 支持</td><td>同上</td></tr>
+  <tr><td>GATT 客户端（发现/读写对端服务）</td><td class="no">✘ 不支持</td><td class="ok">✔ 支持</td><td><code>GATT_Disc*</code> 等缺失</td></tr>
+  <tr><td>多从机并发</td><td class="no">✘ 不支持</td><td class="ok">✔ 支持</td><td>RAM 也不够</td></tr>
+  <tr><td>扩展广播 / 周期广播同步（BLE 5.x）</td><td class="no">✘ 不支持</td><td class="ok">✔ 支持</td><td>—</td></tr>
+  <tr><td>2.4G 私有协议跳频</td><td class="no">✘ 不支持</td><td class="ok">✔ 支持</td><td><code>RF_FrequencyHopping*</code> 缺失</td></tr>
+  <tr><td>BLE ROM 模式</td><td class="ok">✔ <span class="badge b-pu">本工程实现</span></td><td class="ok">✔ 官方提供</td><td>CH572 无硬件 ROM 区，镜像烧在 Flash 固定段</td></tr>
+</table>
+
+<div class="note danger">
+  <div class="nt">一句话决策规则</div>
+  <strong>你的设备是"被别人连"还是"主动去连别人"？</strong><br>
+  「被别人连」→ <span class="ok">CH572 完全够用</span>（成本低、引脚少）<br>
+  「主动去连别人」→ <span class="no">必须换 CH592</span>（26 KB RAM / 448 KB Flash / 有 BLE ROM）
+</div>
+
+<p style="color:var(--dim);font-size:13.5px">
+  两种方式都用同一套能力宏把这条边界固化了：误调 CH572 没有的 API
+  会在<strong>编译期</strong>报错并打印中文提示，而不是等到链接期看一堆
+  <code>undefined reference</code>：
+</p>
+<pre><code>#if CH572_BLE_HAS_CENTRAL
+    GAPRole_CentralInit();          // CH592 走这里
+#else
+    GAPRole_PeripheralInit();       // CH572 走这里
+#endif
+
+// 静态库方式：没包在 #if 里直接调用 → 编译期报错：
+// error: call to '_ch572_ble_missing_api' declared with attribute error:
+//        CH572 BLE 固件库不提供该 API，请检查平台能力宏 CH572_BLE_HAS_xxx
+//
+// ROM 方式：该宏根本没定义 → 编译期报错：
+// error: implicit declaration of function 'GAPRole_CentralInit'</code></pre>
+
+<footer>
+  <p>
+    CH572 BLE 库（静态库 + ROM 镜像）· 文档版本 V3.0　·　工具链：MounRiver Studio 2 riscv-wch-elf-gcc 12.2.0<br>
+    设计推导见 <code>docs/ROM镜像方案说明.md</code> 与 <code>docs/架构与适配分析.md</code>；
+    操作手册见 <code>docs/使用说明.md</code>。
+  </p>
+</footer>
+
+</div>
+</body>
+</html>

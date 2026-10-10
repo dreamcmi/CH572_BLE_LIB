@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CH572 固化协议栈工程 · 快速上手</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <span class="brand">CH572 <span>固化协议栈</span></span>
+    <a href="index.html">总览</a>
+    <a href="quickstart.html" class="active">快速上手</a>
+    <a href="flow.html">运行流程图</a>
+    <a href="firmware.html">固件介绍</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<h1>快速上手
+  <span class="sub">从接线到手机连上，大约 10 分钟</span>
+</h1>
+
+<h2>0. 你需要准备什么</h2>
+
+<table>
+<thead><tr><th>项目</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>硬件</td><td>CH572 开发板（本工程在 <code>CH572D-R0</code> 类板子上验证）+ WCH-Link 下载器</td></tr>
+<tr><td>串口</td><td>USB-TTL 模块，<strong>必须与板子共地</strong></td></tr>
+<tr><td>上位机</td><td>串口助手（115200 8N1）+ 手机 BLE 调试 App（如 nRF Connect、LightBlue）</td></tr>
+<tr><td>固件</td><td><code>build/out/ble_uart-rom-debug-combined.hex</code></td></tr>
+</tbody>
+</table>
+
+<div class="box warn">
+<span class="t">⚠ 首次测试不要用发布版</span>
+<code>ble_uart-rom-combined.hex</code> 是发布版，<strong>没有任何串口输出</strong>（<code>PRINT</code> 是空宏）。
+出问题时你只能靠手机猜。务必先用调试版跑通。
+</div>
+
+<h2>1. 接线</h2>
+
+<figure>
+<svg viewBox="0 0 900 250" xmlns="http://www.w3.org/2000/svg">
+  <rect class="svg-box2" x="30" y="40" width="200" height="170"/>
+  <text class="svg-t3" x="46" y="66">CH572 开发板</text>
+  <text class="svg-t"  x="46" y="98">PA3</text>
+  <text class="svg-t2" x="120" y="98">UART TX（板子 → 上位机）</text>
+  <text class="svg-t"  x="46" y="132">PA2</text>
+  <text class="svg-t2" x="120" y="132">UART RX（上位机 → 板子）</text>
+  <text class="svg-t"  x="46" y="166">GND</text>
+  <text class="svg-t2" x="120" y="166">必须共地</text>
+  <text class="svg-t"  x="46" y="198">SWD / 两线</text>
+
+  <rect class="svg-box2" x="400" y="40" width="180" height="170"/>
+  <text class="svg-t3" x="416" y="66">USB-TTL</text>
+  <text class="svg-t"  x="416" y="98">RXD</text>
+  <text class="svg-t"  x="416" y="132">TXD</text>
+  <text class="svg-t"  x="416" y="166">GND</text>
+  <text class="svg-t"  x="416" y="198">115200 8N1</text>
+
+  <line class="svg-line" x1="230" y1="94"  x2="400" y2="94"/>
+  <text class="svg-t2" x="270" y="86">PA3 → RXD</text>
+  <line class="svg-line" x1="230" y1="128" x2="400" y2="128"/>
+  <text class="svg-t2" x="270" y="120">PA2 ← TXD</text>
+  <line class="svg-ok"   x1="230" y1="162" x2="400" y2="162"/>
+  <text class="svg-t2" x="290" y="154">GND ↔ GND</text>
+
+  <rect class="svg-rom" x="680" y="40" width="190" height="170"/>
+  <text class="svg-t3" x="696" y="66">WCH-Link</text>
+  <text class="svg-t"  x="696" y="98">烧录用，两线即可</text>
+  <text class="svg-t2" x="696" y="124">SWDIO / SWCLK / GND</text>
+  <text class="svg-t2" x="696" y="152">或 USB 直接下载</text>
+  <line class="svg-line2" x1="230" y1="192" x2="680" y2="192"/>
+</svg>
+<figcaption>图 2 · 接线：串口用于看日志，WCH-Link 用于烧录。两条链路独立。</figcaption>
+</figure>
+
+<table>
+<thead><tr><th>信号</th><th>引脚</th><th>参数</th></tr></thead>
+<tbody>
+<tr><td>UART TX</td><td><strong>PA3</strong> → USB-TTL 的 RXD</td><td rowspan="3">115200，8 数据位，无校验，1 停止位</td></tr>
+<tr><td>UART RX</td><td><strong>PA2</strong> ← USB-TTL 的 TXD</td></tr>
+<tr><td>GND</td><td>与 USB-TTL 共地</td></tr>
+</tbody>
+</table>
+
+<h2>2. 烧录</h2>
+
+<div class="box info">
+<span class="t">烧这个文件</span>
+<code>CH572_BLE_LIB/build/out/ble_uart-rom-debug-combined.hex</code>
+</div>
+
+<table>
+<thead><tr><th>设置项</th><th>值</th><th>为什么</th></tr></thead>
+<tbody>
+<tr><td>地址偏移</td><td><strong>不设</strong></td><td>HEX 自带地址，工具会自动按记录地址写入</td></tr>
+<tr><td>整片擦除</td><td><strong>不要勾</strong></td><td>会把 SNV 绑定信息扇区一起擦掉</td></tr>
+<tr><td>校验</td><td>建议勾</td><td>本工程附带 SHA256 可核对</td></tr>
+</tbody>
+</table>
+
+<p>这个合并 HEX 的覆盖范围（已解析确认）：</p>
+
+<pre><code>0x00000 - 0x05CEC   应用（调试版，23,892 字节）
+0x05CEC - 0x1FFFF   空洞，其中 0x1F000-0x1FFFF 是 SNV 扇区，<span class="c">故意不写</span>
+0x20000 - 0x372CB   协议栈 ROM 镜像（94,924 字节）</code></pre>
+
+<p>SHA256 可在 <code>build/out/ble_uart-rom-debug-combined.json</code> 里的
+<code>combined_hex_sha256</code> 字段核对。</p>
+
+<h2>3. 上电看日志</h2>
+
+<p>打开串口助手（115200 8N1），复位板子。正常应该依次看到：</p>
+
+<pre><code><span class="c">── 启动 ──</span>
+CH572 BLE fixed image, sysclk=<span class="n">100000000</span>
+ROM version: CH572_BLE_PERI_LIB_V1.3
+[1/4] ROM RAM initialized (<span class="n">4580</span> bytes)
+VTF armed for diagnostics: [2]=<span class="n">0x20001205</span> [3]=<span class="n">0x200011F9</span>
+[2/4] BLE init
+  [BLEInit 1/9] 配置 SysTick
+  [BLEInit 2/9] 配置 MISC_CTRL 射频位
+  [BLEInit 3/9] 登记 LLE 中断入口
+  [BLEInit 4/9] 设置 BLE 中断优先级
+  [BLEInit 5/9] 清零 bleConfig_t
+  [BLEInit 6/9] 填内存堆参数
+  [BLEInit 7a/9] 填 SNV / 缓冲 / 射频参数完成，准备读 MAC
+  [BLEInit 7b/9] 读 MAC 地址完成
+  [BLEInit 8/9] 调用 BLE_LibInit（关键步骤）
+  [BLEInit 9/9] 建立 RTC 时基
+lsiFrq = <span class="n">32000</span>
+[3/4] GAP and GATT init
+[4/4] TMOS running, name=CH572-BLE-UART
+正在广播，等待连接...
+
+<span class="c">── 心跳（约每 625 ms 一次，仅调试版）──</span>
+[心跳 1] tick=<span class="n">42</span>  间隔=<span class="n">0</span>  BLE中断=<span class="n">3891</span>
+      VTF 入口: [2]=<span class="n">0x20001205</span> (有代码)  [3]=<span class="n">0x200011F9</span> (有代码)
+      VTF 中断号: [2]=<span class="n">21</span>  [3]=<span class="n">20</span>（期望 21 / 20）
+      向量表[20]=<span class="n">0x200011F8</span> [21]=<span class="n">0x20001204</span>（VTF 生效时不走这里）
+      MEM_BUF=<span class="n">0x200017e8</span> 堆=<span class="n">5120</span> 最大间隔=<span class="n">0</span>
+
+<span class="c">── 手机扫描时 ──</span>
+收到扫描请求，来自 <span class="n">4F:3D:7C:D5:A8:B4</span></code></pre>
+
+<h3>怎么看这份日志</h3>
+
+<table>
+<thead><tr><th>看哪里</th><th>正常表现</th><th>不正常说明什么</th></tr></thead>
+<tbody>
+<tr>
+  <td><code>[1/4]</code>~<code>[4/4]</code></td>
+  <td>四步全过</td>
+  <td>停在哪一步就是哪一步的问题。调试版还带 9 步 <code>[BLEInit n/9]</code>，能精确定位</td>
+</tr>
+<tr>
+  <td><code>VTF 入口: [2]=0x20001205</code></td>
+  <td>地址形如 <code>0x200012xx</code></td>
+  <td>若是 <code>0x200004B7</code> / <code>0x200000DD</code>（ROM 原始值），说明 VTF 被周期校准改回去了 —— 此时<b>功能仍然正常</b>，只是计数无效</td>
+</tr>
+<tr>
+  <td><code>BLE中断=</code></td>
+  <td><strong>持续增长</strong></td>
+  <td>一直为 0 且 VTF 入口是 ROM 地址 → 计数被踢出链路；若 VTF 入口是应用地址却仍为 0 → 射频中断真没进来，查 MISC_CTRL / 时钟</td>
+</tr>
+<tr>
+  <td><code>最大间隔=</code></td>
+  <td>几十到几百</td>
+  <td>出现 <code>4294963644</code> 这种接近 2³² 的值，是 SysTick 24 位计数器回绕造成的计算假象，<b>不是故障</b></td>
+</tr>
+<tr>
+  <td><code>收到扫描请求</code></td>
+  <td>手机一扫就出现</td>
+  <td>说明广播真的发出去了、射频收发正常</td>
+</tr>
+<tr>
+  <td><code>校准后 VTF 被协议栈改回 ROM，已重新武装</code></td>
+  <td>约 500 ms 后出现一次，之后每 120 秒一次</td>
+  <td>这行本身是"周期校准真的在跑"的证据</td>
+</tr>
+</tbody>
+</table>
+
+<h2>4. 手机端操作</h2>
+
+<table>
+<thead><tr><th>步骤</th><th>操作</th><th>预期</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>扫描 BLE 设备</td><td>看到 <code>CH572-BLE-UART</code></td></tr>
+<tr><td>2</td><td>连接</td><td>连接成功，日志出现连接状态变化</td></tr>
+<tr><td>3</td><td>读取服务 <code>0xFFE0</code> 的特征 <code>0xFFE1</code></td><td>返回 <code>11</code>（0x0B）</td></tr>
+<tr><td>4</td><td>向 <code>0xFFE2</code> 写入若干字节，再读回</td><td>读回内容与写入一致 —— 验证普通 GATT 读写</td></tr>
+<tr><td>5</td><td>对 <code>0xFFE4</code> 打开 Notify，再向 <code>0xFFE3</code> 写入 1–20 字节</td><td>收到上行通知回显 —— 验证 Notify 通路</td></tr>
+<tr><td>6</td><td>读取 <code>0xFFE5</code>（需要认证）</td><td>触发配对/绑定流程</td></tr>
+</tbody>
+</table>
+
+<div class="box warn">
+<span class="t">关于单包长度</span>
+默认 <code>BLE_BUFF_MAX_LEN = 27</code>，即 ATT_MTU = 23，<strong>单包最多带 20 字节</strong>。
+写超过 20 字节需要走长写或分包。想提高吞吐就调大 <code>BLE_BUFF_MAX_LEN</code>，
+但每档要相应加大 <code>BLE_MEMHEAP_SIZE</code>，并重新检查栈余量。
+</div>
+
+<h2>5. 常见故障对照</h2>
+
+<table>
+<thead><tr><th>现象</th><th>最可能的原因</th><th>怎么查</th></tr></thead>
+<tbody>
+<tr>
+  <td>串口完全无输出</td>
+  <td>接线 / 波特率 / 共地</td>
+  <td>先量 PA3 有没有波形；确认用的是<b>调试版</b>固件（发布版无输出）</td>
+</tr>
+<tr>
+  <td>日志停在 <code>[1/4]</code> 之前</td>
+  <td>ROM 镜像缺失或头部魔数不对</td>
+  <td>会打印 <code>BLE image missing at 0x00020000</code>；重新烧合并 HEX</td>
+</tr>
+<tr>
+  <td>停在 <code>[BLEInit 8/9]</code></td>
+  <td>ROM 的 <code>.data/.bss</code> 没初始化（历史坑）</td>
+  <td><code>RomRam_Init()</code> 是否在 <code>CH57x_BLEInit()</code> 之前执行</td>
+</tr>
+<tr>
+  <td>报 <code>head file error</code></td>
+  <td>ROM 里的版本串与头文件 <code>VER_FILE</code> 不一致</td>
+  <td>两边都应是 <code>CH572_BLE_PERI_LIB_V1.3</code>；用 <code>make_rom.ps1</code> 重新生成</td>
+</tr>
+<tr>
+  <td>初始化全过但手机搜不到</td>
+  <td>射频未工作</td>
+  <td>查 <code>R32_MISC_CTRL</code> bit24-29 是否设成 <code>0x0E</code>、<code>WindowWidening</code> 是否 120、MAC 是否全 0</td>
+</tr>
+<tr>
+  <td>打印 <code>&gt;&gt;&gt; 检测到卡死 &lt;&lt;&lt;</code></td>
+  <td>PC 连续 3 秒不变</td>
+  <td>拿打印出的 PC 值去 <code>objdump -d</code> 反汇编对应 ELF</td>
+</tr>
+<tr>
+  <td>打印 <code>★★★ HardFault ★★★</code></td>
+  <td>非法访问 / 非法指令</td>
+  <td>看 <code>mepc</code> 指向哪条指令，<code>mcause</code> 常见值：1=取指失败、2=非法指令、5=读非法地址、7=写非法地址</td>
+</tr>
+</tbody>
+</table>
+
+<h2>6. 从源码构建</h2>
+
+<pre><code><span class="c"># 进入工程目录</span>
+cd CH572_BLE_LIB
+
+<span class="c"># 全量构建：静态库 + ROM 镜像 + 两种方式的应用固件</span>
+powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Target all
+
+<span class="c"># 单独重建调试版（会重生成合并 HEX）</span>
+powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Target rom -DebugBuild
+
+<span class="c"># 自检（37 项，必须全过）</span>
+powershell -ExecutionPolicy Bypass -File scripts\run_tests.ps1</code></pre>
+
+<div class="box info">
+<span class="t">工具链要求</span>
+只支持 WCH 官方定制工具链（MounRiver Studio 自带的 <code>riscv-wch-elf-gcc</code>）。
+协议栈用了 <code>mcpy</code> 私有指令和 <code>WCH-Interrupt-fast</code> 中断属性，
+通用 RISC-V 工具链编不过。脚本会自动探测，也可用 <code>-Toolchain</code> 指定。
+</div>
+
+<h2>7. 改代码时最容易踩的三个坑</h2>
+
+<div class="grid c3">
+<div class="card">
+<div class="num">坑 1</div>
+<h3>改了 .ps1 要修 BOM</h3>
+<p style="margin-bottom:0">编辑工具可能吃掉脚本的 UTF-8 BOM，PowerShell 5.1 随后按 GBK 解析中文，报出莫名其妙的语法错。改完跑：</p>
+<pre style="margin-bottom:0"><code>python tools\fix_ps1_encoding.py
+python tools\check_ps1_syntax.py</code></pre>
+</div>
+<div class="card">
+<div class="num">坑 2</div>
+<h3>-Defines 里不能带逗号</h3>
+<p>写成 <code>-Defines A=1,B=2</code> 会变成一个宏体，报 <code>token "=" is not valid</code>。要用数组形式：</p>
+<pre style="margin-bottom:0"><code>-Defines @('A=1','B=2')</code></pre>
+</div>
+<div class="card">
+<div class="num">坑 3</div>
+<h3>SNV 地址两边必须一致</h3>
+<p style="margin-bottom:0"><code>ch572_ble.h</code> 与生成的 <code>CH572BLE_ROM.h</code> 里的
+<code>BLE_SNV_ADDR</code> 必须相同，否则从静态库方式切到 ROM 方式时配对信息全丢。</p>
+</div>
+</div>
+
+<h2>8. 还没验证的项目</h2>
+
+<p>实机已经跑通广播和连接，但下面这些<strong>还没测</strong>，上产品前要补：</p>
+
+<table>
+<thead><tr><th>项目</th><th>状态</th><th>怎么测</th></tr></thead>
+<tbody>
+<tr><td>配对绑定掉电保持</td><td><span class="badge b-warn">未验证</span></td><td>读 <code>0xFFE5</code> 完成配对 → 断电重启 → 重连，看绑定是否还有效</td></tr>
+<tr><td>长时间稳定性 / 周期校准</td><td><span class="badge b-warn">未验证</span></td><td>保持连接 ≥ 3 分钟，覆盖默认 120 秒校准周期，观察有无掉线</td></tr>
+<tr><td>运行期最大栈深</td><td><span class="badge b-warn">未验证</span></td><td>1,224 字节只是链接期静态预算。需要加栈水位检测或实测</td></tr>
+<tr><td>低功耗（HAL_SLEEP）</td><td><span class="badge b-bad">未验证</span></td><td>默认关闭。打开需同时降 <code>BLE_MEMHEAP_SIZE</code> 到 4096，且要确认睡眠后 VTF 寄存器是否保持</td></tr>
+<tr><td>OTA</td><td><span class="badge b-bad">未实现</span></td><td>只有可行性推算，无代码</td></tr>
+</tbody>
+</table>
+
+</div>
+
+<footer>
+CH572 固化协议栈工程 · 文档生成于 2026-10-10 · 所有数字来自实际构建产物测量
+</footer>
+
+</body>
+</html>

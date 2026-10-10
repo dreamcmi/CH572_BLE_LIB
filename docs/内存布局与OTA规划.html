@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CH572 BLE 内存布局与 OTA 规划</title>
+<style>
+  :root{
+    --bg:#0f1420; --panel:#161d2c; --panel2:#1c2536; --line:#2a3448;
+    --fg:#dde5f2; --dim:#8d9bb5; --accent:#4ea1ff; --accent2:#39d98a;
+    --warn:#ffb545; --bad:#ff6b6b; --purple:#b98cff; --code:#0b0f18;
+    --c-stack:#ff6b6b; --c-bss:#b98cff; --c-data:#4ea1ff; --c-highcode:#39d98a;
+    --c-free:#2a3448; --c-rom:#b98cff; --c-boot:#ffb545; --c-iap:#ff8c42;
+    --c-snv:#8d9bb5; --c-info:#5a6a85;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:"Microsoft YaHei","PingFang SC","Segoe UI",system-ui,sans-serif;
+    line-height:1.75;font-size:15px}
+  .wrap{max-width:1260px;margin:0 auto;padding:32px 24px 96px}
+  header{border-bottom:1px solid var(--line);padding-bottom:24px;margin-bottom:32px}
+  h1{font-size:29px;margin:0 0 10px;letter-spacing:.5px}
+  h1 .sub{color:var(--accent);font-weight:400;font-size:16px;display:block;margin-top:8px}
+  h2{font-size:22px;margin:52px 0 18px;padding-left:14px;border-left:4px solid var(--accent)}
+  h3{font-size:17px;margin:30px 0 12px;color:var(--accent2)}
+  h4{font-size:15.5px;margin:20px 0 8px;color:var(--warn)}
+  p{margin:10px 0}
+  code{background:var(--code);border:1px solid var(--line);border-radius:4px;
+    padding:1px 6px;font-family:Consolas,"Cascadia Mono",monospace;font-size:13.5px;color:#8fd6ff}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:8px;
+    padding:16px 18px;overflow-x:auto;font-family:Consolas,"Cascadia Mono",monospace;
+    font-size:12.8px;line-height:1.62}
+  pre code{background:none;border:none;padding:0;color:#c9d6e8}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px 22px;margin:18px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:940px){.grid2{grid-template-columns:1fr}}
+  table{border-collapse:collapse;width:100%;margin:16px 0;font-size:14px}
+  th,td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:#b9c8e0;font-weight:600}
+  tr:nth-child(even) td{background:rgba(255,255,255,.015)}
+  .ok{color:var(--accent2);font-weight:600}
+  .no{color:var(--bad);font-weight:600}
+  .wa{color:var(--warn);font-weight:600}
+  .pu{color:var(--purple);font-weight:600}
+  .mono{font-family:Consolas,"Cascadia Mono",monospace}
+
+  .bar{margin:10px 0 22px}
+  .bar .row{display:flex;height:46px;border-radius:6px;overflow:hidden;
+    border:1px solid var(--line);background:var(--c-free)}
+  .bar .seg{display:flex;align-items:center;justify-content:center;
+    font-size:11.5px;font-weight:600;color:#0f1420;overflow:hidden;white-space:nowrap;
+    position:relative;transition:filter .15s}
+  .bar .seg:hover{filter:brightness(1.18)}
+  .bar .axis{display:flex;justify-content:space-between;font-size:11.5px;
+    color:var(--dim);font-family:Consolas,monospace;margin-top:4px}
+  .bar .title{font-weight:600;font-size:14.5px;margin-bottom:6px}
+  .bar .title .tag{font-weight:400;color:var(--dim);font-size:13px;margin-left:8px}
+
+  .legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin:12px 0 20px;font-size:13px}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .swatch{width:14px;height:14px;border-radius:3px;display:inline-block;border:1px solid rgba(255,255,255,.15)}
+
+  .kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:20px 0}
+  .kpi .item{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:16px 12px;text-align:center}
+  .kpi .v{font-size:23px;font-weight:700;color:var(--accent2);line-height:1.2}
+  .kpi .v.dimv{color:var(--dim);font-size:19px}
+  .kpi .v.warnv{color:var(--warn)}
+  .kpi .l{font-size:12.5px;color:var(--dim);margin-top:5px}
+
+  .note{border-left:4px solid var(--warn);background:rgba(255,181,69,.07);
+    border-radius:0 8px 8px 0;padding:14px 18px;margin:18px 0}
+  .note.danger{border-color:var(--bad);background:rgba(255,107,107,.07)}
+  .note.good{border-color:var(--accent2);background:rgba(57,217,138,.07)}
+  .note.info{border-color:var(--accent);background:rgba(78,161,255,.07)}
+  .note .nt{font-weight:700;margin-bottom:6px}
+
+  .toc{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 24px}
+  .toc a{color:var(--accent);text-decoration:none}
+  .toc a:hover{text-decoration:underline}
+  footer{margin-top:60px;padding-top:22px;border-top:1px solid var(--line);
+    color:var(--dim);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>CH572 BLE：静态协议栈 vs ROM 镜像
+    <span class="sub">应用体积对比 · 内存布局 · OTA 分区规划</span>
+  </h1>
+  <p style="color:var(--dim);margin-top:14px">
+    全部数据来自本工程的实际构建产物（MounRiver Studio 2 的
+    <code>riscv-wch-elf-gcc</code> 12.2.0，<code>-Os</code>，
+    示例工程 <code>examples/ble_uart</code>），由
+    <code>tools/mem_layout.py</code> 解析 ELF 得出，未做任何估算。
+  </p>
+  <div class="note info" style="margin-top:18px">
+    <div class="nt">Flash 排布原则</div>
+    本工程把 <strong>BLE 协议栈放在 Flash 高位</strong>，
+    把前面 <strong>0x00000 - 0x1EFFF 这 124 KB 连续空间整块留给 app</strong>。
+    app 不再被 ROM 切成两段：复位向量与代码在同一块里，不需要跨段跳板，
+    链接脚本也只有一个 MEMORY 区域。
+  </div>
+</header>
+
+<div class="toc">
+  <strong>目录</strong>
+  <ol>
+    <li><a href="#size">应用体积：静态协议栈 vs ROM 镜像</a></li>
+    <li><a href="#flash">Flash 布局图</a></li>
+    <li><a href="#ram">RAM 布局图（12 KB 怎么分的）</a></li>
+    <li><a href="#ota">OTA 规划（新布局下怎么排）</a></li>
+    <li><a href="#choose">怎么选：决策表</a></li>
+  </ol>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="size">1. 应用体积：静态协议栈 vs ROM 镜像</h2>
+
+<p>CH572 的用户 Flash 是 <strong>240 KB</strong>（<code>0x00000 - 0x3BFFF</code>）。
+最后 16 KB（<code>0x3C000 - 0x3FFFF</code>）是芯片固定的 BootLoader + INFO，不能碰。</p>
+
+<div class="kpi">
+  <div class="item"><div class="v dimv">80,864 B</div><div class="l">静态协议栈 · 应用 Flash 占用</div></div>
+  <div class="item"><div class="v">6,616 B</div><div class="l">ROM 镜像 · 应用 Flash 占用</div></div>
+  <div class="item"><div class="v">74,248 B</div><div class="l">省下的应用体积</div></div>
+  <div class="item"><div class="v">↓ 91.8%</div><div class="l">应用固件体积降幅</div></div>
+</div>
+
+<div class="panel">
+  <h4 style="margin-top:0">静态协议栈方式：80,864 字节里都是什么</h4>
+  <table>
+    <tr><th style="width:38%">内容</th><th style="width:16%">大小</th><th>说明</th></tr>
+    <tr><td>BLE 协议栈代码</td><td class="mono">≈ 70.0 KB</td><td>GAP/GATT/L2CAP/ATT/SM/LL/BB/TMOS 全部实现在应用固件里</td></tr>
+    <tr><td>HAL 层 + 业务代码 + 外设驱动</td><td class="mono">≈ 6.2 KB</td><td><code>hal/HAL.c</code>、<code>ble_uart*.c</code>、<code>CH57x_*.c</code></td></tr>
+    <tr><td>上电搬到 RAM 的高速代码初值</td><td class="mono">4,044 B</td><td><code>.highcode</code>，存在 Flash、跑在 RAM</td></tr>
+    <tr><td>可写数据初值</td><td class="mono">588 B</td><td><code>.data</code></td></tr>
+    <tr><td class="ok">合计</td><td class="mono ok">80,864 B</td><td class="ok">占 240 KB 的 33%</td></tr>
+  </table>
+</div>
+
+<div class="note good">
+  <div class="nt">静态协议栈方式：还剩约 159 KB 自由 Flash</div>
+  240 KB − 80.9 KB = <strong>159 KB</strong>，足够做官方那套「双镜像 OTA」（要 2 × 108 KB）。
+  代价是应用固件本身有 80 KB，每次 OTA 都要重传这么多。
+</div>
+
+<div class="note info">
+  <div class="nt">ROM 镜像方式：应用只剩 6.6 KB，但 ROM 占掉 87.2 KB</div>
+  ROM 让应用固件从 80.9 KB 降到 6.6 KB，但 ROM 镜像本身也要固化在 Flash 里。
+  所以「芯片里总代码量」反而变多：<strong>87.2 + 6.6 = 93.8 KB &gt; 80.9 KB</strong>。
+  ROM 方式的价值不在省 Flash，而在<strong>缩小 OTA 升级包</strong>（≈81 KB → ≈7 KB）
+  和<strong>升级不动协议栈</strong>。
+</div>
+
+<!-- ============================================================ -->
+<h2 id="flash">2. Flash 布局图</h2>
+
+<div class="legend">
+  <span><i class="swatch" style="background:var(--c-boot)"></i>启动 / OTA flag</span>
+  <span><i class="swatch" style="background:var(--c-rom)"></i>BLE 协议栈 ROM 镜像</span>
+  <span><i class="swatch" style="background:var(--c-highcode)"></i>应用代码（imageA）</span>
+  <span><i class="swatch" style="background:var(--c-data)"></i>OTA 下载区（imageB）</span>
+  <span><i class="swatch" style="background:var(--c-iap)"></i>IAP 刷写程序</span>
+  <span><i class="swatch" style="background:var(--c-snv)"></i>SNV / 数据</span>
+  <span><i class="swatch" style="background:var(--c-free)"></i>空闲</span>
+  <span><i class="swatch" style="background:var(--c-info)"></i>芯片固定占用</span>
+</div>
+
+<!-- ---------- 方案 1：当前默认（无 OTA） ---------- -->
+<div class="bar">
+  <div class="title">① 当前默认布局 · 静态协议栈（无 OTA）
+    <span class="tag">一个 hex 烧进去就能跑</span></div>
+  <div class="row">
+    <div class="seg" style="background:var(--c-highcode);width:32.9%" title="应用含协议栈 80,864 B（0x00000-0x13BE0）">应用固件（含协议栈）80.9 KB</div>
+    <div class="seg" style="background:var(--c-free);width:67.1%;color:var(--dim)" title="空闲 0x13BE0-0x3BFFF">空闲 159 KB</div>
+  </div>
+  <div class="axis"><span>0x00000</span><span>0x13BE0</span><span>0x3BFFF</span></div>
+</div>
+
+<!-- ---------- 方案 2：当前默认（ROM） ---------- -->
+<div class="bar">
+  <div class="title">② 当前默认布局 · ROM 镜像（无 OTA）
+    <span class="tag">协议栈靠后，app 拿前面 124 KB 连续空间</span></div>
+  <div class="row">
+    <div class="seg" style="background:var(--c-highcode);width:2.7%" title="app 0x00000-0x01A14（6.6 KB）">6.6K</div>
+    <div class="seg" style="background:var(--c-free);width:47.8%;color:var(--dim)" title="app 区剩余 0x01A14-0x1EFFF（约 117 KB）">app 区剩余 117 KB</div>
+    <div class="seg" style="background:var(--c-snv);width:1.7%;color:#0f1420" title="SNV 0x1F000-0x1FFFF">4K</div>
+    <div class="seg" style="background:var(--c-rom);width:36.4%" title="ROM 0x20000-0x35CE3（87.2 KB）">BLE 协议栈 ROM 87.2 KB</div>
+    <div class="seg" style="background:var(--c-free);width:11.4%;color:var(--dim)" title="余量 0x35CE4-0x3BFFF（24.8 KB）">余量 24.8 KB</div>
+  </div>
+  <div class="axis"><span>0x00000</span><span>0x1F000</span><span>0x20000</span><span>0x35CE4</span><span>0x3BFFF</span></div>
+</div>
+
+<div class="note info">
+  <div class="nt">SNV 区为什么预留 4 KB（绑定信息其实只用 256 字节）</div>
+  <ul style="margin:8px 0 0">
+    <li><strong>实际用量</strong>：<code>BLE_SNV_BLOCK × BLE_SNV_NUM = 256 × 1 = 256 字节</code>。
+        CH572 的 Flash 擦除粒度是 <strong>256 字节</strong>（不是 4 KB），
+        所以绑定信息只需要一个擦除块。</li>
+    <li><strong>官方 SDK 的默认值</strong>也是 256 / 1
+        （见 <code>CH572EVT-1.4</code> 的 <code>HAL/include/CONFIG.h</code>）。</li>
+    <li><strong>本工程预留 4 KB</strong> 是留余量 —— 以后扩展绑定相关功能
+        （多绑定、白名单等）不用再动整个 Flash 布局。4 KB 对 240 KB 的 Flash
+        占比很小，不值得为省它去改地址。</li>
+    <li>确实需要这 3 KB 的话，可以传 <code>-SnvSize 1024</code>
+        并同步改 <code>src/Ld/Link_rom.ld</code> 的 <code>FLASH_ROM_END</code>，
+        app 空间能从 124 KB 增到 127 KB。</li>
+  </ul>
+</div>
+
+<div class="note">
+  <div class="nt">SNV 地址的三条硬约束</div>
+  <ol style="margin:8px 0 0">
+    <li><strong>必须 256 字节对齐</strong> —— 擦除粒度决定的。</li>
+    <li><strong>不能落进 ROM 镜像区间</strong> —— SNV 是运行期会被擦写的区域，
+        与 ROM 重叠会导致「写绑定信息时把协议栈代码擦掉」，而且只有上板才会暴露。
+        自检里专门有一项检查它（<code>run_tests.ps1</code> 的 4b-2 节）。</li>
+    <li><strong>两种协议栈方式必须用同一个地址</strong> ——
+        <code>ch572_ble.h</code>（静态库方式）与 <code>CH572BLE_ROM.h</code>（ROM 方式）
+        的 <code>BLE_SNV_ADDR</code> 当前都是 <code>0x1F000</code>。
+        不一致的话，从一种方式切到另一种时会丢掉已配对的绑定信息。</li>
+  </ol>
+</div>
+
+<!-- ---------- 方案 3：官方 OTA ---------- -->
+<div class="bar">
+  <div class="title">③ 官方 OTA 方案（CH572EVT-1.4 <code>BackupUpgrade_OTA</code>）
+    <span class="tag">双镜像 + 独立 IAP，不用 ROM 镜像</span></div>
+  <div class="row">
+    <div class="seg" style="background:var(--c-boot);width:1.7%" title="OTA flag 0x0000-0x0FFF">4K</div>
+    <div class="seg" style="background:var(--c-highcode);width:45%" title="imageA 0x1000-0x1BFFF（108 KB）">imageA（当前应用，含协议栈）108 KB</div>
+    <div class="seg" style="background:var(--c-data);width:45%" title="imageB 0x1C000-0x36FFF（108 KB）">imageB（OTA 下载区）108 KB</div>
+    <div class="seg" style="background:var(--c-iap);width:5%" title="imageIAP 0x37000-0x39FFF（12 KB）">IAP 12K</div>
+    <div class="seg" style="background:var(--c-snv);width:3.3%" title="数据 0x3A000-0x3BFFF（8 KB）">8K</div>
+  </div>
+  <div class="axis"><span>0x00000</span><span>0x01000</span><span>0x1C000</span><span>0x37000</span><span>0x3BFFF</span></div>
+</div>
+
+<p style="color:var(--dim);font-size:13.5px">
+  官方把 240 KB 分成四块（<code>ota.h</code> 原话：
+  「整个用户 code 区分成四块，4K，108K，108K，12K」）。
+  <strong>这个方案没有给 ROM 镜像留位置</strong> —— 用了 ROM 就没法照搬它。
+</p>
+
+<!-- ---------- 方案 4：ROM + A/B ---------- -->
+<div class="bar">
+  <div class="title">④ <span class="pu">ROM 靠后 + A/B 双镜像</span>（推荐，见第 4 节方案 B）
+    <span class="tag">协议栈仍在高位，前面 124 KB 划成两组镜像</span></div>
+  <div class="row">
+    <div class="seg" style="background:var(--c-boot);width:1.7%" title="OTA flag / JumpIAP 0x00000-0x0FFF">4K</div>
+    <div class="seg" style="background:var(--c-snv);width:1.7%;color:#0f1420" title="SNV 0x1000-0x1FFF">4K</div>
+    <div class="seg" style="background:var(--c-highcode);width:22.9%" title="imageA 0x2000-0xFFFF（56 KB，当前用 6.6 KB）">imageA 56 KB</div>
+    <div class="seg" style="background:var(--c-data);width:22.9%" title="imageB 0x10000-0x1DFFF（56 KB）">imageB 56 KB</div>
+    <div class="seg" style="background:var(--c-iap);width:3.3%" title="IAP / 余量 0x1E000-0x1FFFF（8 KB）">IAP 8K</div>
+    <div class="seg" style="background:var(--c-rom);width:36.4%" title="ROM 0x20000-0x35CE3（87.2 KB）">BLE 协议栈 ROM 87.2 KB</div>
+    <div class="seg" style="background:var(--c-free);width:11.1%;color:var(--dim)" title="余量 0x35CE4-0x3BFFF">24.8K</div>
+  </div>
+  <div class="axis"><span>0x00000</span><span>0x02000</span><span>0x10000</span><span>0x1E000</span><span>0x20000</span><span>0x3BFFF</span></div>
+</div>
+
+<div class="note danger">
+  <div class="nt">方案 ④ 的两个硬约束</div>
+  <ol style="margin:8px 0 0">
+    <li><strong>官方 IAP 刷写器是 12 KB，但只剩 8 KB</strong> ——
+        要么写一个精简版刷写器（只做"擦一页 + 写一页 + 校验"），
+        要么用 imageA / imageB 自己互相刷（见第 4 节方案 B），要么压缩镜像到 52 KB 腾出 12 KB。</li>
+    <li><strong>ROM 夹在中间，两个镜像必须同址</strong> ——
+        CH572 没有 MMU，imageA/imageB 是同一份固件编译出来的，链接地址必须一致，
+        只能靠 JumpIAP 在「同一虚拟地址」的两个物理副本间切换。
+        <strong>官方 JumpIAP 不支持这种排布，需要自研。</strong></li>
+  </ol>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="ram">3. RAM 布局图（12 KB 怎么分的）</h2>
+
+<p>CH572 只有 <strong>12 KB SRAM</strong>（<code>0x20000000 - 0x20002FFF</code>），
+这是比 Flash 紧张得多的资源。两种方式的分布如下：</p>
+
+<div class="legend">
+  <span><i class="swatch" style="background:var(--c-highcode)"></i>高速代码（.highcode）</span>
+  <span><i class="swatch" style="background:var(--c-data)"></i>可写数据（.data）</span>
+  <span><i class="swatch" style="background:var(--c-bss)"></i>未初始化数据（.bss，含协议栈堆）</span>
+  <span><i class="swatch" style="background:var(--c-stack)"></i>栈（.stack）</span>
+</div>
+
+<div class="bar">
+  <div class="title">① 静态协议栈方式 · RAM 10,904 / 12,288 字节
+    <span class="tag">剩下 1,384 字节给栈 —— 偏紧</span></div>
+  <div class="row">
+    <div class="seg" style="background:var(--c-highcode);width:32.9%" title=".highcode 4,044 B">.highcode 4,044 B</div>
+    <div class="seg" style="background:var(--c-data);width:4.8%" title=".data 588 B">588</div>
+    <div class="seg" style="background:var(--c-bss);width:51.0%" title=".bss 6,272 B（其中 MEM_BUF 5,120）">.bss 6,272 B　（MEM_BUF 占 5,120）</div>
+    <div class="seg" style="background:var(--c-stack);width:11.3%;color:#0f1420" title="栈 1,384 B">栈 1,384 B</div>
+  </div>
+  <div class="axis"><span>0x20000000</span><span>0x20002A98</span><span>0x20003000</span></div>
+</div>
+
+<div class="note danger">
+  <div class="nt">1,384 字节的栈是什么概念</div>
+  一次 BLE 连接事件的处理链路（中断 → TMOS → GAP → GATT → 你的回调）
+  大约要用掉 300–600 字节栈。<strong>1,384 字节只够 2–4 层嵌套</strong>；
+  业务回调里再调几层、或者写个 <code>uint8_t buf[256]</code> 局部变量，
+  就很容易栈溢出踩坏 <code>.bss</code>。现象是「蓝牙跑一会儿就断」「变量莫名变了」。
+</div>
+
+<div class="bar">
+  <div class="title">② ROM 镜像方式 · RAM 7,728 / 12,288 字节
+    <span class="tag">剩下 4,560 字节给栈 —— 宽裕 3.3 倍</span></div>
+  <div class="row">
+    <div class="seg" style="background:var(--c-highcode);width:16.1%" title=".highcode 1,980 B">.highcode 1,980 B</div>
+    <div class="seg" style="background:var(--c-data);width:3.9%" title=".data 476 B">476</div>
+    <div class="seg" style="background:var(--c-bss);width:42.9%" title=".bss 5,272 B（其中 MEM_BUF 5,120）">.bss 5,272 B（MEM_BUF 占 5,120）</div>
+    <div class="seg" style="background:var(--c-stack);width:37.1%;color:#0f1420" title="栈 4,560 B">栈 4,560 B</div>
+  </div>
+  <div class="axis"><span>0x20000000</span><span>0x20001E30</span><span>0x20003000</span></div>
+</div>
+
+<h3>RAM 逐项对比</h3>
+<table>
+  <tr><th style="width:36%">项目</th><th>静态协议栈</th><th>ROM 镜像</th><th>差异</th></tr>
+  <tr><td><code>.highcode</code> 高速代码</td><td class="mono">4,044 B</td><td class="mono ok">1,980 B</td><td class="ok">−2,064 B</td></tr>
+  <tr><td><code>.data</code> 可写数据</td><td class="mono">588 B</td><td class="mono ok">476 B</td><td class="ok">−112 B</td></tr>
+  <tr><td><code>.bss</code> 未初始化数据</td><td class="mono">6,272 B</td><td class="mono ok">5,272 B</td><td class="ok">−1,000 B</td></tr>
+  <tr><td>　其中 <code>MEM_BUF</code>（协议栈堆）</td><td class="mono">5,120 B</td><td class="mono">5,120 B</td><td>不变</td></tr>
+  <tr><td>　其中其他静态变量</td><td class="mono">1,152 B</td><td class="mono ok">152 B</td><td class="ok">−1,000 B</td></tr>
+  <tr><td class="ok"><strong>可用栈空间</strong></td><td class="mono no">1,384 B</td><td class="mono ok"><strong>4,560 B</strong></td><td class="ok"><strong>× 3.3</strong></td></tr>
+</table>
+
+<div class="note good">
+  <div class="nt">ROM 方式在 RAM 上也是赢的</div>
+  协议栈自己的静态控制块（<code>ip.o</code>、<code>lle.o</code>、<code>tmos.o</code>、
+  <code>bb.o</code>、<code>memory.o</code> 里的全局状态，共约 1 KB）
+  在 ROM 方式下算在 ROM 镜像的 <code>.bss</code> 里，
+  <strong>不占应用固件的 RAM</strong> —— 应用侧只需提供 <code>MEM_BUF</code> 这块堆。
+</div>
+
+<div class="note">
+  <div class="nt">RAM 调优的唯一有效手段：<code>BLE_MEMHEAP_SIZE</code></div>
+  <code>MEM_BUF</code> 占了 <code>.bss</code> 的 82%–97%，大小由
+  <code>BLE_MEMHEAP_SIZE</code> 决定，当前默认 <code>512×10 = 5,120 字节</code>。
+  <table style="margin-top:10px">
+    <tr><th>设置</th><th>MEM_BUF</th><th>静态库方式可用栈</th><th>ROM 方式可用栈</th><th>能否跑全功能从机</th></tr>
+    <tr><td class="mono">512×14 = 7 KB</td><td class="mono">7,168</td><td class="mono no">−664（溢出）</td><td class="mono wa">2,512</td><td class="no">静态库方式放不下</td></tr>
+    <tr><td class="mono">512×12 = 6 KB</td><td class="mono">6,144</td><td class="mono no">360（极险）</td><td class="mono wa">3,536</td><td class="no">静态库方式不可用</td></tr>
+    <tr><td class="mono"><strong>512×10 = 5 KB</strong>（默认）</td><td class="mono">5,120</td><td class="mono wa">1,384</td><td class="mono ok">4,560</td><td class="ok">可以</td></tr>
+    <tr><td class="mono">512×8 = 4 KB</td><td class="mono">4,096</td><td class="mono ok">2,408</td><td class="mono ok">5,584</td><td class="wa">可以，但多连接/大 MTU 吃紧</td></tr>
+  </table>
+  <p style="margin-bottom:0;font-size:13.5px;color:var(--dim)">
+    ★ 值得注意的是：<strong>改用 ROM 方式后就有余量把
+    <code>BLE_MEMHEAP_SIZE</code> 调到 6–7 KB 了</strong>
+    （静态库方式根本放不下）。协议栈堆大一点，多连接、长特征值、
+    通知排队都会更从容。
+  </p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="ota">4. OTA 规划（新布局下怎么排）</h2>
+
+<h3>先理解 CH572 的 OTA 三件套</h3>
+<table>
+  <tr><th style="width:22%">组件</th><th style="width:16%">官方放哪</th><th style="width:12%">实际大小</th><th>作用</th></tr>
+  <tr><td><strong>OTA Flag + JumpIAP</strong></td><td class="mono">0x00000</td>
+      <td class="mono ok">≈ 4 KB<br>（代码只有几个字节）</td>
+      <td>芯片复位后最先执行的小程序，读 Flag 决定跳到哪个 image。
+          官方 <code>JumpIAP</code> 的 <code>main()</code> <strong>是空的</strong> ——
+          跳转写在启动汇编的一条 <code>j</code> 指令里</td></tr>
+  <tr><td><strong>imageA / imageB</strong></td><td class="mono">0x01000 / 0x1C000</td>
+      <td class="mono">各 108 KB</td>
+      <td>当前运行的应用 / OTA 下载区。CH572 没有 MMU，两份是同一固件的物理副本，
+          靠 Flag 切换</td></tr>
+  <tr><td><strong>imageIAP</strong></td><td class="mono">0x37000</td>
+      <td class="mono wa">12 KB</td>
+      <td>真正执行 Flash 擦写的程序。因为擦写时不能"自己擦自己"，
+          它必须独立存放；而且 CH572 的 IAP 代码要<strong>搬到 RAM 里执行</strong></td></tr>
+  <tr><td><strong>数据 / SNV</strong></td><td class="mono">0x3A000</td>
+      <td class="mono">8 KB</td><td>OTA 状态、绑定信息</td></tr>
+</table>
+
+<div class="note info">
+  <div class="nt">OTA 的核心难点：Flash 擦写时不能「自己擦自己」</div>
+  这是所有 MCU OTA 的共同约束。官方解法是把刷写程序 <strong>imageIAP 单独放一块</strong>：
+  要刷 imageA 时先跳到 imageIAP，由它去擦写 imageA ——
+  被擦的区域和正在执行的代码不重叠。
+</div>
+
+<h3>ROM 挪到高位带来的变化</h3>
+<div class="note danger">
+  <div class="nt">Flash 尾部被 ROM 吃掉了</div>
+  ROM 现在占 <code>0x20000 - 0x35CE3</code>，它后面只剩 24.8 KB，
+  而官方 OTA 需要把 imageB（108 KB）和 imageIAP（12 KB）放在尾部 ——
+  <strong>放不下了</strong>。OTA 的分区空间从"尾部"变成了"ROM 之前的中段"，
+  规划方式必须跟着变。
+</div>
+
+<!-- ---------- 方案 A ---------- -->
+<h3>方案 A：不用 ROM，直接用官方 OTA（<span class="ok">最省事</span>）</h3>
+<div class="bar">
+  <div class="row">
+    <div class="seg" style="background:var(--c-boot);width:1.7%">4K</div>
+    <div class="seg" style="background:var(--c-highcode);width:45%">imageA 108 KB（含 BLE 协议栈）</div>
+    <div class="seg" style="background:var(--c-data);width:45%">imageB 108 KB</div>
+    <div class="seg" style="background:var(--c-iap);width:5%">IAP 12K</div>
+    <div class="seg" style="background:var(--c-snv);width:3.3%">8K</div>
+  </div>
+  <div class="axis"><span>0x00000</span><span>0x01000</span><span>0x1C000</span><span>0x37000</span><span>0x3BFFF</span></div>
+</div>
+<table>
+  <tr><th style="width:28%">项目</th><th>内容</th></tr>
+  <tr><td>协议栈方式</td><td><strong>静态协议栈</strong>（编进 imageA）</td></tr>
+  <tr><td>应用可用空间</td><td class="mono ok">108 KB（当前用 80.9 KB，余 27 KB / 25% 增长余量）</td></tr>
+  <tr><td>OTA 升级包</td><td class="mono wa">≈ 81 KB（要重传整个应用含协议栈）</td></tr>
+  <tr><td>实现工作量</td><td class="ok">最小 —— 官方示例直接改</td></tr>
+  <tr><td>A/B 回滚</td><td class="ok">支持</td></tr>
+  <tr><td>适用</td><td>应用不大、能接受 81 KB 升级包、想最快落地</td></tr>
+</table>
+
+<!-- ---------- 方案 B ---------- -->
+<h3>方案 B：ROM 靠后 + A/B 双镜像（<span class="pu">推荐给用 ROM 的场景</span>）</h3>
+<div class="bar">
+  <div class="row">
+    <div class="seg" style="background:var(--c-boot);width:1.7%">4K</div>
+    <div class="seg" style="background:var(--c-snv);width:1.7%;color:#0f1420">4K</div>
+    <div class="seg" style="background:var(--c-highcode);width:22.9%">imageA 56 KB</div>
+    <div class="seg" style="background:var(--c-data);width:22.9%">imageB 56 KB</div>
+    <div class="seg" style="background:var(--c-iap);width:3.3%">8K</div>
+    <div class="seg" style="background:var(--c-rom);width:36.4%">BLE 协议栈 ROM 87.2 KB</div>
+    <div class="seg" style="background:var(--c-free);width:11.1%;color:var(--dim)">余量</div>
+  </div>
+  <div class="axis"><span>0x00000</span><span>0x10000</span><span>0x1E000</span><span>0x20000</span><span>0x3BFFF</span></div>
+</div>
+<table>
+  <tr><th style="width:26%">区域</th><th style="width:22%">地址</th><th>说明</th></tr>
+  <tr><td>OTA Flag + JumpIAP</td><td class="mono">0x00000 - 0x00FFF</td><td>4 KB。跳转代码本身只有几个字节，整块留给 Flag</td></tr>
+  <tr><td>SNV 绑定信息</td><td class="mono">0x01000 - 0x01FFF</td><td>4 KB，运行期写</td></tr>
+  <tr><td>imageA</td><td class="mono">0x02000 - 0x0FFFF</td><td>56 KB（当前只用 6.6 KB）</td></tr>
+  <tr><td>imageB</td><td class="mono">0x10000 - 0x1DFFF</td><td>56 KB（OTA 下载区）</td></tr>
+  <tr><td>IAP 刷写器 / 余量</td><td class="mono">0x1E000 - 0x1FFFF</td><td class="wa">8 KB —— 官方 IAP 要 12 KB，见下</td></tr>
+  <tr><td>BLE 协议栈 ROM</td><td class="mono">0x20000 - 0x35CE3</td><td>87.2 KB，烧一次不动</td></tr>
+  <tr><td>余量</td><td class="mono">0x35CE4 - 0x3BFFF</td><td>24.8 KB</td></tr>
+</table>
+
+<div class="note danger">
+  <div class="nt">方案 B 必须先解决：IAP 只有 8 KB，官方要 12 KB</div>
+  三个可选办法：
+  <ol style="margin:8px 0 0">
+    <li><strong>镜像缩到 52 KB</strong>，腾出 12 KB 给官方 IAP（最简单，56→52 KB 影响不大）</li>
+    <li><strong>写精简版 IAP</strong> —— 只要「擦一页 + 写一页 + 校验」，几百字节就够，
+        比官方那套带 BLE 接收的 12 KB 小得多</li>
+    <li><strong>让 imageA / imageB 互相刷</strong> ——
+        不需要独立 IAP：运行 imageA 时去擦写 imageB（自己没有运行在被擦区），
+        写完后把 Flag 切到 B，复位后 JumpIAP 跳进 B。这是最干净的方案</li>
+  </ol>
+</div>
+
+<div class="note good">
+  <div class="nt">方案 B 的卖点</div>
+  <ul style="margin:8px 0 0">
+    <li><strong>升级包只有 7 KB</strong>（只传 app，协议栈在 ROM 里不动，不用重传）</li>
+    <li><strong>支持 A/B 回滚</strong> —— 新固件验证失败可切回上一份</li>
+    <li><strong>升级期间 BLE 链路可保持</strong> —— 协议栈 ROM 不被擦写</li>
+    <li>app 侧每个槽 56 KB，对当前 6.6 KB 的应用有极大余量</li>
+  </ul>
+</div>
+
+<!-- ---------- 方案 C ---------- -->
+<h3>方案 C：ROM 靠后 + 单下载区（<span class="wa">空间最宽裕，但没回滚</span>）</h3>
+<div class="bar">
+  <div class="row">
+    <div class="seg" style="background:var(--c-boot);width:1.7%">4K</div>
+    <div class="seg" style="background:var(--c-snv);width:1.7%;color:#0f1420">4K</div>
+    <div class="seg" style="background:var(--c-highcode);width:24.6%">imageA 60 KB</div>
+    <div class="seg" style="background:var(--c-iap);width:4.9%">IAP 12K</div>
+    <div class="seg" style="background:var(--c-data);width:24.6%">下载区 60 KB</div>
+    <div class="seg" style="background:var(--c-rom);width:36.4%">BLE 协议栈 ROM 87.2 KB</div>
+    <div class="seg" style="background:var(--c-free);width:6.1%;color:var(--dim)">余量</div>
+  </div>
+  <div class="axis"><span>0x00000</span><span>0x1000</span><span>0x2000</span><span>0x1E000</span><span>0x20000</span><span>0x3BFFF</span></div>
+</div>
+<p style="color:var(--dim);font-size:13.5px">
+  把 ROM 之前的 128 KB 划成：Flag 4K + SNV 4K + IAP 12K，
+  剩下 108 KB 给「imageA + 下载区」各 54 KB。
+  升级流程：下载区收完新固件 → 校验 → 切 Flag → 复位 → IAP 把下载区拷到 imageA。
+</p>
+<div class="note">
+  <div class="nt">方案 C 的取舍</div>
+  <strong>换来的是</strong>：分区更宽松（每个区 54–60 KB），IAP 能放官方 12 KB 版本。<br>
+  <strong>失去的是</strong>：没有 A/B 双运行槽 —— 下载区收完就被拷贝覆盖，
+  刷写中途断电需要靠 IAP 的校验+重试机制恢复，回滚能力弱于方案 B。
+</div>
+
+<!-- ============================================================ -->
+<h2 id="choose">5. 怎么选：决策表</h2>
+
+<table>
+  <tr>
+    <th style="width:24%">你的情况</th>
+    <th style="width:24%">推荐</th>
+    <th>理由</th>
+  </tr>
+  <tr>
+    <td>开发调试阶段</td>
+    <td class="ok"><strong>静态协议栈 · 无 OTA</strong></td>
+    <td>一个 hex 烧进去就能跑，改代码重编最快，不用管分区。</td>
+  </tr>
+  <tr>
+    <td>不打算 OTA，或只现场用 WCH-Link 升级</td>
+    <td class="ok"><strong>ROM 镜像 · 无 OTA</strong><br>（当前默认布局）</td>
+    <td>app 拿 124 KB 连续空间，栈有 4,560 字节。</td>
+  </tr>
+  <tr>
+    <td>要 OTA，想最快落地</td>
+    <td class="ok"><strong>方案 A：官方双镜像</strong><br>（不用 ROM）</td>
+    <td>官方示例直接改；108 KB 应用空间有 25% 增长余量；支持 A/B 回滚。
+        代价是升级包 81 KB。</td>
+  </tr>
+  <tr>
+    <td>要 OTA，且升级包要小 /<br>升级时不能断蓝牙</td>
+    <td class="pu"><strong>方案 B：ROM + A/B</strong></td>
+    <td>升级包 7 KB（省 92%），支持回滚，升级不动协议栈。
+        代价是要自研 JumpIAP 与刷写流程（或用镜像互刷绕开独立 IAP）。</td>
+  </tr>
+  <tr>
+    <td>要 OTA，想直接复用官方 12 KB IAP</td>
+    <td class="wa"><strong>方案 C：ROM + 单下载区</strong></td>
+    <td>分区宽松，IAP 能放官方版本。代价是没有 A/B 回滚。</td>
+  </tr>
+  <tr>
+    <td>要 A/B 回滚 + 小升级包 + 不想自研</td>
+    <td class="no"><strong>CH572 做不到</strong></td>
+    <td>ROM 87.2 KB + 双镜像 + 官方 IAP 12 KB 已经超过 240 KB 的合理分配。
+        建议换 <strong>CH592</strong>（448 KB Flash、26 KB RAM、官方 ROM 方案，资源宽裕得多）。</td>
+  </tr>
+</table>
+
+<div class="note info">
+  <div class="nt">一句话总结</div>
+  <strong>静态协议栈</strong>：应用占 80.9 KB，Flash 剩 159 KB，够做官方双镜像 OTA；
+  RAM 只剩 1,384 字节栈，偏紧。<br>
+  <strong>ROM 镜像（当前默认）</strong>：应用只占 6.6 KB，app 拿到 124 KB 连续空间，
+  栈有 4,560 字节；ROM 吃掉 87.2 KB 高位 Flash。
+  价值在于<strong>OTA 升级包能从 81 KB 降到 7 KB</strong>。<br><br>
+  <strong>只用 ROM 不要 OTA → 保持当前布局即可</strong>；
+  <strong>要 OTA 且图省事 → 方案 A（弃用 ROM）</strong>；
+  <strong>要 OTA 且在意升级包 → 方案 B</strong>。
+</div>
+
+<h3>落地步骤</h3>
+<ul>
+  <li><strong>方案 A</strong>：把官方 <code>BackupUpgrade_OTA</code> 的
+      <code>ImageFlag</code> / <code>JumpIAP</code> / <code>IAP</code> 三部分移植进来，
+      应用链接脚本改成 <code>ORIGIN = 0x00001000, LENGTH = 108K</code>，
+      并回到静态协议栈方式（不加 <code>CH572BLE_ROM</code>）。</li>
+  <li><strong>方案 B</strong>：先跑
+      <code>make_rom.ps1 -RomBase 0x00020000</code> 确认 ROM 正常，
+      再改 <code>Link_rom.ld</code> 把 app 区间改成 4 段
+      （flag / SNV / imageA / imageB），最后写 JumpIAP 与刷写逻辑。</li>
+  <li><strong>RAM 调优</strong>：走 ROM 方式的话，可以试着把
+      <code>BLE_MEMHEAP_SIZE</code> 从 5 KB 提到 6–7 KB，
+      看多连接 / 大 MTU 场景是否更稳。</li>
+</ul>
+
+<footer>
+  <p>
+    CH572 BLE 内存布局与 OTA 规划 · 数据来源：本工程实际构建产物
+    （<code>build/out/ble_uart.elf</code>、<code>build/out/ble_uart-rom.elf</code>、
+    <code>build/rom/CH572BLE_ROM.elf</code>）<br>
+    分析工具 <code>tools/mem_layout.py</code>、<code>tools/ota_feasibility.py</code>；
+    OTA 分区参考 <code>CH572EVT-1.4/EVT/EXAM/BLE/BackupUpgrade_OTA</code>。<br>
+    <span style="color:var(--warn)">注意：本页的 OTA 方案为规划与推算，
+    尚未在 CH572 实机上验证过 OTA 流程。</span>
+  </p>
+</footer>
+
+</div>
+</body>
+</html>

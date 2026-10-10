@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CH572 固化协议栈工程 · 总览</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <span class="brand">CH572 <span>固化协议栈</span></span>
+    <a href="index.html" class="active">总览</a>
+    <a href="quickstart.html">快速上手</a>
+    <a href="flow.html">运行流程图</a>
+    <a href="firmware.html">固件介绍</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<h1>CH572 固化协议栈工程
+  <span class="sub">把 WCH 的 <code>libCH572BLE_PERI.a</code> 重定位到 Flash 固定地址，生成跳转表供独立应用调用</span>
+</h1>
+
+<div class="box ok">
+  <span class="t">✅ 2026-10-10 实机验证通过</span>
+  调试版固件在 CH572 上电后正常出日志、正常广播；手机能搜到 <code>CH572-BLE-UART</code>、能连接，
+  并成功收到 <code>GAP_SCAN_REQUEST_EVENT</code>（扫描端 <code>4F:3D:7C:D5:A8:B4</code>）。
+  这是本工程第一次实机跑通。
+</div>
+
+<h2>这是什么</h2>
+
+<p>
+CH572 是 WCH 的一款 BLE 从机芯片，官方只提供静态库 <code>libCH572BLE_PERI.a</code>（约 89 KB 代码）。
+本工程把这份协议栈<strong>预链接成一个固定地址的 Flash 镜像</strong>，放在 <code>0x20000</code>，
+并在镜像头部放一张<strong>跳转表</strong>。应用从此不再链接协议栈库，而是通过绝对地址调用它。
+</p>
+
+<p>这样做换来的核心收益只有一个，但很关键：<strong>应用固件从 86 KB 缩到 12.5 KB</strong>，OTA 升级包同比例缩小，而且升级不动协议栈。</p>
+
+<div class="grid c3">
+  <div class="card">
+    <div class="num">收益</div>
+    <h3>应用 12.5 KB</h3>
+    <p style="margin:0;color:var(--fg-dim);font-size:14px">相比静态库方式的 86 KB，缩小约 85%。OTA 每次只传应用段。</p>
+  </div>
+  <div class="card">
+    <div class="num">代价</div>
+    <h3>芯片总代码变多</h3>
+    <p style="margin:0;color:var(--fg-dim);font-size:14px">92.7 + 12.5 = 105 KB，比纯静态的 86 KB 多约 19 KB。协议栈与应用的公共部分无法共享。</p>
+  </div>
+  <div class="card">
+    <div class="num">约束</div>
+    <h3>RAM 只剩 1,224 字节栈</h3>
+    <p style="margin:0;color:var(--fg-dim);font-size:14px">CH572 总共 12 KB SRAM，协议栈堆占 5 KB。这是本工程最紧的资源。</p>
+  </div>
+</div>
+
+<h2>Flash 与 RAM 布局</h2>
+
+<figure>
+<svg viewBox="0 0 980 470" xmlns="http://www.w3.org/2000/svg">
+  <text class="svg-t3" x="0" y="16">Flash（256 KB 地址空间，用户可用 240 KB）</text>
+
+  <rect class="svg-box2" x="0" y="30" width="490" height="58"/>
+  <text class="svg-t"  x="12" y="54">应用可用区  124 KB</text>
+  <text class="svg-t2" x="12" y="74">0x00000 – 0x1EFFF　（复位向量在 0x0，向量表在 0x400）</text>
+
+  <rect class="svg-warn" x="490" y="30" width="60" height="58"/>
+  <text class="svg-t"  x="498" y="54" style="font-size:12px">SNV</text>
+  <text class="svg-t2" x="498" y="74" style="font-size:10px">4 KB</text>
+
+  <rect class="svg-rom" x="550" y="30" width="290" height="58"/>
+  <text class="svg-t"  x="562" y="54">BLE 协议栈 ROM 镜像  92.7 KB</text>
+  <text class="svg-t2" x="562" y="74">0x20000 – 0x372CB（94,924 字节）</text>
+
+  <rect class="svg-box" x="840" y="30" width="60" height="58"/>
+  <text class="svg-t"  x="846" y="54" style="font-size:12px">余量</text>
+  <text class="svg-t2" x="846" y="74" style="font-size:10px">19 KB</text>
+
+  <rect class="svg-box" x="900" y="30" width="80" height="58" style="fill:#2a1919;stroke:#6b2a2a"/>
+  <text class="svg-t"  x="906" y="54" style="font-size:12px">固定占用</text>
+  <text class="svg-t2" x="906" y="74" style="font-size:10px">16 KB</text>
+
+  <line class="svg-line2" x1="0" y1="96" x2="980" y2="96"/>
+  <text class="svg-t2" x="0"   y="112">0x0</text>
+  <text class="svg-t2" x="470" y="112">0x1F000</text>
+  <text class="svg-t2" x="530" y="112">0x20000</text>
+  <text class="svg-t2" x="840" y="112">0x372CC</text>
+  <text class="svg-t2" x="905" y="112">0x3C000</text>
+  <text class="svg-t2" x="945" y="112">0x40000</text>
+
+  <text class="svg-t3" x="0" y="158">SRAM（12 KB = 12,288 字节）</text>
+
+  <rect class="svg-rom" x="0" y="172" width="183" height="80"/>
+  <text class="svg-t"  x="12" y="196">ROM 保留区</text>
+  <text class="svg-t2" x="12" y="216">4,580 B</text>
+  <text class="svg-t2" x="12" y="234">0x20000000</text>
+
+  <rect class="svg-ram" x="183" y="172" width="21" height="80"/>
+  <text class="svg-t2" x="184" y="268" style="font-size:10px">highcode 728 B</text>
+
+  <rect class="svg-ram" x="204" y="172" width="16" height="80"/>
+  <text class="svg-t2" x="204" y="286" style="font-size:10px">data 520 B</text>
+
+  <rect class="svg-ram" x="220" y="172" width="157" height="80"/>
+  <text class="svg-t"  x="232" y="196">应用 bss</text>
+  <text class="svg-t2" x="232" y="216">5,232 B（其中 MEM_BUF 5,120 B）</text>
+
+  <rect class="svg-warn" x="377" y="172" width="37" height="80"/>
+  <text class="svg-t"  x="381" y="196" style="font-size:11px">栈</text>
+  <text class="svg-t2" x="368" y="268" style="font-size:10px">1,224 B（发布版）</text>
+
+  <rect class="svg-warn" x="414" y="172" width="37" height="80" style="fill:#241a1a;stroke:#6b2a2a"/>
+  <text class="svg-t"  x="418" y="196" style="font-size:11px">栈</text>
+  <text class="svg-t2" x="405" y="286" style="font-size:10px">1,048 B（调试版）</text>
+
+  <line class="svg-line2" x1="0" y1="266" x2="451" y2="266"/>
+  <text class="svg-t2" x="0"   y="282">0x20000000</text>
+  <text class="svg-t2" x="170" y="300">0x200011E4</text>
+  <text class="svg-t2" x="360" y="300">0x20002B38</text>
+  <text class="svg-t2" x="420" y="282">0x20003000（栈顶）</text>
+
+  <rect class="svg-box" x="500" y="172" width="480" height="80" style="fill:#161c22"/>
+  <text class="svg-t"  x="514" y="196">RAM 顶端固定为 0x20003000 —— 栈向下生长</text>
+  <text class="svg-t2" x="514" y="218">ROM 保留区 = 0x20000000 – 0x200011E4（不含）</text>
+  <text class="svg-t2" x="514" y="238">应用 RAM 从 0x200011E4 起，与 ROM 区完全不重叠</text>
+
+  <rect class="svg-warn" x="500" y="272" width="480" height="86"/>
+  <text class="svg-t"  x="514" y="296" style="fill:#ffb454">⚠ 栈余量是最紧的资源</text>
+  <text class="svg-t2" x="514" y="316">MEM_BUF = BLE_MEMHEAP_SIZE = 5,120 B，占应用 bss 的 98%</text>
+  <text class="svg-t2" x="514" y="336">每把 MEM_BUF 调小 512 B，栈就多 512 B —— 这是唯一有效的 RAM 调优手段</text>
+</svg>
+<figcaption>图 1 · Flash 与 SRAM 布局（数字均为实测）。ROM 保留区、SNV 扇区、应用区间三者严格不重叠。</figcaption>
+</figure>
+
+<h2>三个最关键的设计点</h2>
+
+<div class="grid c2">
+
+<div class="card">
+<div class="num">设计点 1</div>
+<h3>跳转表：应用与协议栈的唯一接口</h3>
+<p>镜像头部 <code>+0x34</code> 起是一张 <strong>164 项 × 4 字节</strong>的跳转表。应用侧头文件把每个 API 定义成对表里某一项的间接调用：</p>
+<pre><code>#define BLE_LIB_JT(n)  (*(uint32_t*)(FUNCITON_BASE_ADDRESSS + (n) * 4))
+#define tmos_rand      (( uint32_t (*)(void) ) BLE_LIB_JT(1))</code></pre>
+<p>43 个本平台不提供的 API 在表里是 <code>0</code>，并且<strong>在头文件里完全没有宏</strong> —— 误用是编译/链接期报错，不会运行时跳到地址 0。</p>
+</div>
+
+<div class="card">
+<div class="num">设计点 2</div>
+<h3>ROM 没有上电入口，应用要替它初始化</h3>
+<p>ROM 镜像里有自己的 <code>.data</code> 和 <code>.bss</code>（共 1,184 字节），但它<strong>没有复位向量</strong> —— 没人替它搬初值、清零。</p>
+<p>所以应用必须：预留这段 RAM（改链接脚本的 <code>ORIGIN</code>）、在调用任何 ROM 函数前搬 <code>.highcode</code>/<code>.data</code>、清 <code>.bss</code>、执行 <code>fence.i</code>。</p>
+<div class="box danger" style="margin-bottom:0">
+<span class="t">踩过的坑</span>
+漏掉这一步的后果是<strong>协议栈初始化直接卡死在 <code>BLE_LibInit</code></strong>，而且没有任何报错。
+</div>
+</div>
+
+<div class="card">
+<div class="num">设计点 3</div>
+<h3>BLE 中断走 PFIC VTF，不走向量表</h3>
+<p>CH572 的 BLEB/BLEL 中断由协议栈通过 <strong>PFIC VTF（Vector-Table-Free）通道 #2/#3</strong> 接管，硬件直接从 ROM 里的真 ISR 进入。</p>
+<p>这意味着<strong>中断向量表里那两项是死代码</strong> —— 早期版本把"ROM 搜不到设备"归因于"向量表悬空"，方向完全错了。</p>
+<p style="margin-bottom:0"><a href="flow.html">→ 看运行流程图里的中断路径</a></p>
+</div>
+
+<div class="card">
+<div class="num">设计点 4</div>
+<h3>ROM 里的初始化会被周期重放</h3>
+<p><code>BLE_RegInit()</code>（周期校准调用）内部会再跑一次 <code>LLE_DevInit</code>/<code>BB_DevInit</code>，从而把 VTF 重写回 ROM 的地址。</p>
+<p>应用侧任何"抢过来"的状态<strong>都必须挂在同一个周期上重新确认</strong>，否则只能活到第一次重放 —— 这是实机上真实踩到的坑。</p>
+</div>
+
+</div>
+
+<h2>工程产物一览</h2>
+
+<table>
+<thead><tr><th>产物</th><th>大小</th><th>用途</th></tr></thead>
+<tbody>
+<tr><td><code>build/out/ble_uart-rom-debug-combined.hex</code></td><td>334,247 B</td><td><span class="badge b-ok">首测用这个</span> 调试版应用 + 协议栈，一次下载，带串口日志</td></tr>
+<tr><td><code>build/out/ble_uart-rom-combined.hex</code></td><td>302,207 B</td><td>发布版应用 + 协议栈，无串口日志</td></tr>
+<tr><td><code>build/out/ble_uart-rom.hex</code></td><td>32 KB</td><td>仅应用（调试通过后单独更新用）</td></tr>
+<tr><td><code>lib/CH572BLE_ROM.hex</code></td><td>267,084 B</td><td>独立协议栈镜像，基址 <code>0x20000</code>（合并 HEX 已含）</td></tr>
+<tr><td><code>build/out/ble_uart.hex</code></td><td>242,566 B</td><td>静态链接版对照固件，不使用 ROM 方式</td></tr>
+<tr><td><code>build/out/*-combined.json</code></td><td>—</td><td>固件 SHA256、Flash/RAM 大小、验证状态</td></tr>
+</tbody>
+</table>
+
+<h2>文档导航</h2>
+
+<div class="grid c3">
+<a class="card" href="quickstart.html">
+  <div class="num">上手</div>
+  <h3>快速上手</h3>
+  <p style="margin:0;color:var(--fg-dim);font-size:14px">接线、烧录、串口日志逐行解读、手机端操作、常见故障对照表。</p>
+</a>
+<a class="card" href="flow.html">
+  <div class="num">原理</div>
+  <h3>运行流程图</h3>
+  <p style="margin:0;color:var(--fg-dim);font-size:14px">上电启动全流程、中断路径、TMOS 主循环、开发构建流程，四张图。</p>
+</a>
+<a class="card" href="firmware.html">
+  <div class="num">参考</div>
+  <h3>固件介绍</h3>
+  <p style="margin:0;color:var(--fg-dim);font-size:14px">产物清单、内存地图、跳转表构成、GATT 服务定义、能力边界、未验证项。</p>
+</a>
+</div>
+
+<h2>其他文档</h2>
+<table>
+<thead><tr><th>文档</th><th>内容</th></tr></thead>
+<tbody>
+<tr><td><a href="../../MEMORY.md">MEMORY.md</a></td><td>事实速查表：所有实测数字、四条硬约束、改东西的对照表</td></tr>
+<tr><td><a href="../CH572固化协议栈修复与测试.md">CH572固化协议栈修复与测试.md</a></td><td>修复记录、VTF 更正、低功耗状态、实机验收步骤</td></tr>
+<tr><td><a href="../实机排查指南.md">实机排查指南.md</a></td><td>搜不到信号时的排查手册</td></tr>
+<tr><td><a href="../../README.md">README.md</a></td><td>工程入口与构建命令</td></tr>
+</tbody>
+</table>
+
+</div>
+
+<footer>
+CH572 固化协议栈工程 · 文档生成于 2026-10-10 · 所有数字来自实际构建产物测量
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CH572 固化协议栈工程 · 运行流程图</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <span class="brand">CH572 <span>固化协议栈</span></span>
+    <a href="index.html">总览</a>
+    <a href="quickstart.html">快速上手</a>
+    <a href="flow.html" class="active">运行流程图</a>
+    <a href="firmware.html">固件介绍</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<h1>运行流程图
+  <span class="sub">上电启动 · 中断路径 · 主循环 · 构建流程</span>
+</h1>
+
+<!-- ==================================================================== -->
+<h2>图 3 · 上电启动全流程</h2>
+
+<p>ROM 镜像<strong>没有复位向量</strong>，所以上电启动完全由应用负责。整个流程里最容易出错的是
+「谁在什么时候搬哪段内存」—— 顺序错了就是静默卡死，没有任何报错。</p>
+
+<figure>
+<svg viewBox="0 0 980 900" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="#4aa8ff"/>
+    </marker>
+    <marker id="ar2" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="#ff6b6b"/>
+    </marker>
+  </defs>
+
+  <text class="svg-t3" x="20" y="18">硬件复位 → main()</text>
+
+  <!-- 1 -->
+  <rect class="svg-box2" x="20" y="32" width="300" height="58"/>
+  <text class="svg-t" x="34" y="56">① _start → handle_reset</text>
+  <text class="svg-t2" x="34" y="76">startup_CH572.S，关 MIE，mtvec = 0x400</text>
+  <line class="svg-line" x1="170" y1="90" x2="170" y2="118" marker-end="url(#ar)"/>
+
+  <!-- 2 -->
+  <rect class="svg-box2" x="20" y="118" width="300" height="72"/>
+  <text class="svg-t" x="34" y="142">② 搬应用自己的段</text>
+  <text class="svg-t2" x="34" y="162">.highcode → RAM，.data → RAM，清 .bss</text>
+  <text class="svg-t2" x="34" y="180">然后 fence.i</text>
+  <line class="svg-line" x1="170" y1="190" x2="170" y2="218" marker-end="url(#ar)"/>
+
+  <!-- 3 -->
+  <rect class="svg-box2" x="20" y="218" width="300" height="58"/>
+  <text class="svg-t" x="34" y="242">③ mret → main()</text>
+  <text class="svg-t2" x="34" y="262">此刻中断仍关闭</text>
+  <line class="svg-line" x1="170" y1="276" x2="170" y2="304" marker-end="url(#ar)"/>
+
+  <!-- 4 -->
+  <rect class="svg-box2" x="20" y="304" width="300" height="58"/>
+  <text class="svg-t" x="34" y="328">④ 配时钟 + 串口</text>
+  <text class="svg-t2" x="34" y="348">HSE PLL 100MHz；PA3/PA2 115200</text>
+  <line class="svg-line" x1="170" y1="362" x2="170" y2="390" marker-end="url(#ar)"/>
+
+  <!-- 5 -->
+  <rect class="svg-warn" x="20" y="390" width="300" height="58"/>
+  <text class="svg-t" x="34" y="414">⑤ 校验 ROM 头部魔数</text>
+  <text class="svg-t2" x="34" y="434">读 0x20000，应等于 0x43483537</text>
+
+  <line class="svg-dash" x1="320" y1="419" x2="376" y2="419" marker-end="url(#ar2)"/>
+  <rect class="svg-box" x="380" y="392" width="180" height="54" style="fill:#2a1919;stroke:#6b2a2a"/>
+  <text class="svg-t" x="392" y="414" style="fill:#ff6b6b">不匹配</text>
+  <text class="svg-t2" x="392" y="434">打印 missing，死循环</text>
+
+  <line class="svg-line" x1="170" y1="448" x2="170" y2="476" marker-end="url(#ar)"/>
+
+  <!-- 6 ★ -->
+  <rect class="svg-rom" x="20" y="476" width="300" height="90"/>
+  <text class="svg-t3" x="34" y="498">⑥ RomRam_Init()　★关键★</text>
+  <text class="svg-t2" x="34" y="518">搬 ROM 的 .highcode（3,396 B）</text>
+  <text class="svg-t2" x="34" y="536">搬 ROM 的 .data（44 B）</text>
+  <text class="svg-t2" x="34" y="554">清 ROM 的 .bss（1,140 B）→ fence.i</text>
+  <line class="svg-line" x1="170" y1="566" x2="170" y2="594" marker-end="url(#ar)"/>
+
+  <!-- 7 -->
+  <rect class="svg-box2" x="20" y="594" width="300" height="58"/>
+  <text class="svg-t" x="34" y="618">⑦ 注册钩子 + 首次武装 VTF</text>
+  <text class="svg-t2" x="34" y="638">InstallRomIrqHandlers / HAL_RomVtfRefresh</text>
+  <line class="svg-line" x1="170" y1="652" x2="170" y2="680" marker-end="url(#ar)"/>
+
+  <!-- 8 -->
+  <rect class="svg-box2" x="20" y="680" width="300" height="58"/>
+  <text class="svg-t" x="34" y="704">⑧ 开中断：csrsi mstatus, 8</text>
+  <text class="svg-t2" x="34" y="724">从这里起中断才可能进来</text>
+  <line class="svg-line" x1="170" y1="738" x2="170" y2="766" marker-end="url(#ar)"/>
+
+  <!-- 9 -->
+  <rect class="svg-box2" x="20" y="766" width="300" height="72"/>
+  <text class="svg-t" x="34" y="790">⑨ CH57x_BLEInit()</text>
+  <text class="svg-t2" x="34" y="810">9 步：SysTick / MISC_CTRL / LLE 登记 /</text>
+  <text class="svg-t2" x="34" y="828">优先级 / 配置 / 堆 / SNV / 射频 / MAC</text>
+  <line class="svg-line" x1="170" y1="838" x2="170" y2="866" marker-end="url(#ar)"/>
+
+  <rect class="svg-rom" x="20" y="866" width="300" height="30"/>
+  <text class="svg-t" x="34" y="886">BLE_LibInit 内部武装 VTF → ROM 真 ISR</text>
+
+  <!-- 右侧说明 -->
+  <rect class="svg-box" x="600" y="32" width="360" height="200"/>
+  <text class="svg-t3" x="616" y="58">为什么 ⑥ 不能省</text>
+  <text class="svg-t2" x="616" y="82">ROM 镜像里有自己的 .data / .bss</text>
+  <text class="svg-t2" x="616" y="102">（共 1,184 字节），但它没有复位向量，</text>
+  <text class="svg-t2" x="616" y="122">没人替它搬初值、清 bss。</text>
+  <text class="svg-t2" x="616" y="150">漏掉的后果：协议栈一读自己的 ble</text>
+  <text class="svg-t2" x="616" y="170">结构就拿到垃圾值，卡死在 BLE_LibInit，</text>
+  <text class="svg-t2" x="616" y="190">而且没有任何报错输出。</text>
+  <text class="svg-t2" x="616" y="218" style="fill:#ffb454">这是第三次实机排查的根因。</text>
+
+  <rect class="svg-box" x="600" y="248" width="360" height="180"/>
+  <text class="svg-t3" x="616" y="274">为什么 ⑧ 排在 ⑥⑦ 之后</text>
+  <text class="svg-t2" x="616" y="298">VTF 和钩子表必须在中断打开之前就位。</text>
+  <text class="svg-t2" x="616" y="324">ROM 的 .highcode 里放着 LLE_IRQFIOFHandler</text>
+  <text class="svg-t2" x="616" y="344">等真 ISR —— 如果 ⑥ 没做完就来中断，</text>
+  <text class="svg-t2" x="616" y="364">取指会命中空白 RAM（全 0 = 非法指令）。</text>
+  <text class="svg-t2" x="616" y="396">startup 已经先关了 MIE，所以这里安全。</text>
+
+  <rect class="svg-box" x="600" y="444" width="360" height="122"/>
+  <text class="svg-t3" x="616" y="470">⑦ 的两次武装</text>
+  <text class="svg-t2" x="616" y="494">main 里这一次只保证"上电到首次校准"</text>
+  <text class="svg-t2" x="616" y="514">之间能计数；之后每次周期校准后，</text>
+  <text class="svg-t2" x="616" y="534">HAL_ProcessEvent 会再确认一次。</text>
+  <text class="svg-t2" x="616" y="556" style="fill:#ffb454">原因见「图 5」。</text>
+
+  <rect class="svg-warn" x="600" y="582" width="360" height="150"/>
+  <text class="svg-t3" x="616" y="608" style="fill:#ffb454">应用 RAM 从哪开始</text>
+  <text class="svg-t2" x="616" y="632">链接脚本 Link_rom.ld 里：</text>
+  <text class="svg-mono" x="616" y="654">RAM ORIGIN = ROM_RAM_RESERVE_END</text>
+  <text class="svg-mono" x="616" y="674">           = 0x200011E4</text>
+  <text class="svg-t2" x="616" y="700">由 gen_rom_ram_info.py 从链接好的 ROM</text>
+  <text class="svg-t2" x="616" y="720">ELF 自动读出，永远与 ROM 真实布局一致。</text>
+
+  <rect class="svg-rom" x="600" y="748" width="360" height="148"/>
+  <text class="svg-t3" x="616" y="774">ROM 保留区明细（4,580 B）</text>
+  <text class="svg-mono" x="616" y="798">0x20000000  .highcode  3,396 B</text>
+  <text class="svg-mono" x="616" y="820">0x20000D44  .data         44 B</text>
+  <text class="svg-mono" x="616" y="842">0x20000D70  .bss       1,140 B</text>
+  <text class="svg-mono" x="616" y="864">0x200011E4  ── 应用从这里开始 ──</text>
+</svg>
+<figcaption>图 3 · 上电启动九步。⑥ 和 ⑧ 的先后关系是整个启动流程里最关键的一点。</figcaption>
+</figure>
+
+<!-- ==================================================================== -->
+<h2>图 4 · BLE 中断路径（走 PFIC VTF，不走向量表）</h2>
+
+<div class="box danger">
+<span class="t">这是本工程最容易搞错的一点</span>
+早期版本把"ROM 方式搜不到设备"归因于"中断向量表悬空"，方向完全错了。
+CH572 的 BLEB/BLEL 中断由协议栈通过 <strong>PFIC VTF 通道 #2/#3</strong> 接管，
+向量表里那两项<strong>根本不会被硬件取用</strong>。
+</div>
+
+<figure>
+<svg viewBox="0 0 980 560" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ar3" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="#38d39f"/>
+    </marker>
+  </defs>
+
+  <text class="svg-t3" x="20" y="18">路径 A · 默认（发布版走这条）</text>
+
+  <rect class="svg-warn" x="20" y="32" width="150" height="66"/>
+  <text class="svg-t" x="34" y="56">射频中断</text>
+  <text class="svg-t2" x="34" y="76">BLEB / BLEL</text>
+
+  <line class="svg-ok" x1="170" y1="65" x2="226" y2="65" marker-end="url(#ar3)"/>
+
+  <rect class="svg-rom" x="230" y="32" width="230" height="66"/>
+  <text class="svg-t3" x="244" y="54">PFIC VTF 通道</text>
+  <text class="svg-mono" x="244" y="74">VTFADDR[3] / VTFADDR[2]</text>
+  <text class="svg-t2" x="244" y="90">由 BB_DevInit / LLE_DevInit 写入</text>
+
+  <line class="svg-ok" x1="460" y1="65" x2="516" y2="65" marker-end="url(#ar3)"/>
+
+  <rect class="svg-rom" x="520" y="32" width="250" height="66"/>
+  <text class="svg-t" x="534" y="56">ROM 内的真 ISR</text>
+  <text class="svg-mono" x="534" y="76">LLE_IRQFIOFHandler</text>
+  <text class="svg-t2" x="534" y="92">__INTERRUPT，以 mret 结束</text>
+
+  <line class="svg-ok" x1="770" y1="65" x2="826" y2="65" marker-end="url(#ar3)"/>
+
+  <rect class="svg-ram" x="830" y="32" width="130" height="66"/>
+  <text class="svg-t" x="844" y="56">协议栈逻辑</text>
+  <text class="svg-mono" x="844" y="76">LLE_IRQLibHandler</text>
+  <text class="svg-t2" x="844" y="92">普通函数，ret</text>
+
+  <text class="svg-t3" x="20" y="152">路径 B · 调试版（为了让"BLE中断="计数有效）</text>
+
+  <rect class="svg-warn" x="20" y="166" width="150" height="66"/>
+  <text class="svg-t" x="34" y="190">射频中断</text>
+  <text class="svg-t2" x="34" y="210">BLEB / BLEL</text>
+
+  <line class="svg-ok" x1="170" y1="199" x2="226" y2="199" marker-end="url(#ar3)"/>
+
+  <rect class="svg-rom" x="230" y="166" width="230" height="66"/>
+  <text class="svg-t3" x="244" y="188">PFIC VTF 通道</text>
+  <text class="svg-mono" x="244" y="208">被应用抢回指向应用包装</text>
+
+  <line class="svg-ok" x1="460" y1="199" x2="516" y2="199" marker-end="url(#ar3)"/>
+
+  <rect class="svg-ram" x="520" y="166" width="250" height="66"/>
+  <text class="svg-t" x="534" y="190">应用包装函数（.highcode）</text>
+  <text class="svg-mono" x="534" y="210">0x20001204 / 0x200011F8</text>
+  <text class="svg-t2" x="534" y="226">__INTERRUPT，mret</text>
+
+  <line class="svg-ok" x1="770" y1="199" x2="826" y2="199" marker-end="url(#ar3)"/>
+
+  <rect class="svg-ram" x="830" y="166" width="130" height="66"/>
+  <text class="svg-t" x="844" y="184">计数 hook</text>
+  <text class="svg-t2" x="844" y="204">g_dbgBleIrq</text>
+  <text class="svg-t2" x="844" y="222">Count++</text>
+
+  <line class="svg-ok" x1="895" y1="232" x2="895" y2="262" marker-end="url(#ar3)"/>
+  <rect class="svg-rom" x="740" y="266" width="220" height="40"/>
+  <text class="svg-t" x="754" y="292">再转调 ROM 真 ISR（ret）</text>
+
+  <rect class="svg-box" x="20" y="266" width="700" height="120" style="fill:#161c22"/>
+  <text class="svg-t3" x="36" y="292">向量表里的 BB/LLE 两项 —— 死代码</text>
+  <text class="svg-t2" x="36" y="316">Link_rom.ld 的 .vectors 在 Flash 0x400，BLEB/BLEL 槽指向应用包装函数。</text>
+  <text class="svg-t2" x="36" y="336">但 VTF 优先，硬件不会走这里。它唯一的作用是：万一某个 ROM 修订版没有</text>
+  <text class="svg-t2" x="36" y="356">自己武装 VTF，这两项就是唯一入口。包装函数不到 40 字节，留着是免费保险。</text>
+  <text class="svg-t2" x="36" y="378" style="fill:#ffb454">注意：静态库构建里这两个槽指向 "j ." 死循环，同样无害，别误判成缺陷。</text>
+
+  <rect class="svg-warn" x="20" y="404" width="940" height="140"/>
+  <text class="svg-t3" x="36" y="430" style="fill:#ffb454">⚠ VTF 会被周期校准改回去</text>
+  <text class="svg-t2" x="36" y="456">BLE_RegInit()（周期校准调用）内部会再跑一次 LLE_DevInit + BB_DevInit ——</text>
+  <text class="svg-t2" x="36" y="476">ROM 反汇编 0x2A296 / 0x2A2A6 实证 —— 于是 VTFADDR 又被写回 ROM 的地址。</text>
+  <text class="svg-t2" x="36" y="500">所以只在 main() 里武装一次是不够的：首次校准（约 500 ms）就把它覆盖掉，</text>
+  <text class="svg-t2" x="36" y="520">之后 "BLE中断=" 永远是 0，而设备功能完全正常 —— 这个假数字会把排查带偏。</text>
+  <text class="svg-t2" x="36" y="540" style="fill:#38d39f">修复：HAL_RomVtfRefresh() 在每次校准后确认/重装（只在确实被改时才写）。</text>
+</svg>
+<figcaption>图 4 · 两条中断路径。发布版走路径 A（少一层转接），调试版走路径 B（多一层计数）。</figcaption>
+</figure>
+
+<!-- ==================================================================== -->
+<h2>图 5 · 周期校准与 VTF 维护</h2>
+
+<figure>
+<svg viewBox="0 0 980 470" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ar4" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="#4aa8ff"/>
+    </marker>
+  </defs>
+
+  <line class="svg-line2" x1="60" y1="360" x2="940" y2="360"/>
+  <text class="svg-t2" x="60" y="384">上电</text>
+  <text class="svg-t2" x="250" y="384">+800 tick（约 500 ms）</text>
+  <text class="svg-t2" x="600" y="384">+120 s</text>
+  <text class="svg-t2" x="840" y="384">+120 s</text>
+  <text class="svg-t2" x="60" y="404" style="fill:#8b98a5">首次校准 = 周期校准流程的第一次</text>
+
+  <circle cx="60" cy="360" r="5" fill="#4aa8ff"/>
+  <circle cx="300" cy="360" r="5" fill="#ffb454"/>
+  <circle cx="620" cy="360" r="5" fill="#ffb454"/>
+  <circle cx="880" cy="360" r="5" fill="#ffb454"/>
+
+  <rect class="svg-ram" x="20" y="150" width="220" height="90"/>
+  <text class="svg-t3" x="34" y="174">main() 首次武装</text>
+  <text class="svg-t2" x="34" y="196">VTFADDR → 应用包装</text>
+  <text class="svg-t2" x="34" y="216">HAL_RomVtfRefresh()</text>
+  <text class="svg-t2" x="34" y="234" style="fill:#38d39f">✓ 计数有效</text>
+  <line class="svg-line" x1="130" y1="240" x2="130" y2="352" marker-end="url(#ar4)"/>
+
+  <rect class="svg-warn" x="230" y="150" width="240" height="90"/>
+  <text class="svg-t3" x="244" y="174" style="fill:#ffb454">BLE_RegInit()</text>
+  <text class="svg-t2" x="244" y="196">→ LLE_DevInit + BB_DevInit</text>
+  <text class="svg-t2" x="244" y="216">→ VTFADDR 被写回 ROM</text>
+  <text class="svg-t2" x="244" y="234" style="fill:#ff6b6b">✗ 计数失效（功能照常）</text>
+  <line class="svg-line" x1="350" y1="240" x2="350" y2="352" marker-end="url(#ar4)"/>
+
+  <rect class="svg-ram" x="380" y="150" width="230" height="90"/>
+  <text class="svg-t3" x="394" y="174">HAL_RomVtfRefresh()</text>
+  <text class="svg-t2" x="394" y="196">发现 ≠ 应用包装 → 重装</text>
+  <text class="svg-t2" x="394" y="216">打印「已重新武装」</text>
+  <text class="svg-t2" x="394" y="234" style="fill:#38d39f">✓ 计数恢复</text>
+  <line class="svg-line" x1="495" y1="240" x2="495" y2="352" marker-end="url(#ar4)"/>
+
+  <rect class="svg-warn" x="560" y="150" width="200" height="90"/>
+  <text class="svg-t3" x="574" y="174" style="fill:#ffb454">120 秒后</text>
+  <text class="svg-t2" x="574" y="196">校准再次触发</text>
+  <text class="svg-t2" x="574" y="216">VTF 再被写回 ROM</text>
+  <text class="svg-t2" x="574" y="234" style="fill:#ff6b6b">✗ 又失效</text>
+  <line class="svg-line" x1="660" y1="240" x2="660" y2="352" marker-end="url(#ar4)"/>
+
+  <rect class="svg-ram" x="700" y="150" width="250" height="90"/>
+  <text class="svg-t3" x="714" y="174">HAL_RomVtfRefresh()</text>
+  <text class="svg-t2" x="714" y="196">同样重装</text>
+  <text class="svg-t2" x="714" y="216">循环往复</text>
+  <text class="svg-t2" x="714" y="234" style="fill:#38d39f">✓ 稳态：计数一直有效</text>
+  <line class="svg-line" x1="825" y1="240" x2="825" y2="352" marker-end="url(#ar4)"/>
+
+  <rect class="svg-box" x="20" y="424" width="940" height="40" style="fill:#161c22"/>
+  <text class="svg-t2" x="36" y="450">教训：只要某个 ROM 函数在运行期被周期调用，它做的所有寄存器配置都会周期性重放。</text>
+</svg>
+<figcaption>图 5 · VTF 是一条"抢过来 → 被改回 → 再抢回来"的稳态循环。发布版不参与这条循环。</figcaption>
+</figure>
+
+<!-- ==================================================================== -->
+<h2>图 6 · 主循环与数据流</h2>
+
+<figure>
+<svg viewBox="0 0 980 420" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ar5" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="#4aa8ff"/>
+    </marker>
+    <marker id="ar6" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="#38d39f"/>
+    </marker>
+  </defs>
+
+  <rect class="svg-box2" x="330" y="20" width="320" height="50"/>
+  <text class="svg-t" x="344" y="42">main() 的 while(1)</text>
+  <text class="svg-mono" x="344" y="60">TMOS_SystemProcess()</text>
+
+  <line class="svg-line" x1="490" y1="70" x2="490" y2="98" marker-end="url(#ar5)"/>
+
+  <rect class="svg-rom" x="300" y="98" width="380" height="60"/>
+  <text class="svg-t3" x="316" y="122">TMOS 调度器（在 ROM 里，走跳转表 JT144）</text>
+  <text class="svg-t2" x="316" y="142">扫任务表 → 到期事件 → 调对应 task 的 ProcessEvent</text>
+
+  <!-- 三个任务 -->
+  <line class="svg-line" x1="380" y1="158" x2="180" y2="196" marker-end="url(#ar5)"/>
+  <line class="svg-line" x1="490" y1="158" x2="490" y2="196" marker-end="url(#ar5)"/>
+  <line class="svg-line" x1="600" y1="158" x2="800" y2="196" marker-end="url(#ar5)"/>
+
+  <rect class="svg-ram" x="40" y="196" width="280" height="86"/>
+  <text class="svg-t3" x="54" y="220">HAL 任务（hal/HAL.c）</text>
+  <text class="svg-t2" x="54" y="242">周期校准 HAL_REG_INIT_EVENT</text>
+  <text class="svg-t2" x="54" y="262">→ BLE_RegInit / RTC / TMOS_TimerSet</text>
+  <text class="svg-t2" x="54" y="278" style="fill:#38d39f">→ 然后 HAL_RomVtfRefresh()</text>
+
+  <rect class="svg-ram" x="350" y="196" width="280" height="86"/>
+  <text class="svg-t3" x="364" y="220">GAP 从机角色（ROM 库）</text>
+  <text class="svg-t2" x="364" y="242">广播 / 连接 / 状态回调</text>
+  <text class="svg-t2" x="364" y="262">bleUartStateCB() 由协议栈直接调用</text>
+  <text class="svg-t2" x="364" y="278">（<b>不要</b>自己再派发一次）</text>
+
+  <rect class="svg-ram" x="660" y="196" width="280" height="86"/>
+  <text class="svg-t3" x="674" y="220">GATT 服务任务</text>
+  <text class="svg-t2" x="674" y="242">0xFFE0 服务读写 / Notify</text>
+  <text class="svg-t2" x="674" y="262">bleUart_ReadAttrCB / WriteAttrCB</text>
+  <text class="svg-t2" x="674" y="278">bleUartService</text>
+
+  <!-- 数据流 -->
+  <text class="svg-t3" x="20" y="322">数据流（示例服务当前是回环桩，不是真透传）</text>
+
+  <rect class="svg-box" x="20" y="336" width="150" height="56"/>
+  <text class="svg-t" x="34" y="358">手机</text>
+  <text class="svg-t2" x="34" y="378">写 0xFFE3</text>
+  <line class="svg-ok" x1="170" y1="364" x2="226" y2="364" marker-end="url(#ar6)"/>
+
+  <rect class="svg-box" x="230" y="336" width="170" height="56"/>
+  <text class="svg-t" x="244" y="358">ATT 写回调</text>
+  <text class="svg-t2" x="244" y="378">memcpy 到 CHAR2</text>
+  <line class="svg-ok" x1="400" y1="364" x2="456" y2="364" marker-end="url(#ar6)"/>
+
+  <rect class="svg-warn" x="460" y="336" width="200" height="56"/>
+  <text class="svg-t" x="474" y="358">在中断上下文里同步 Notify</text>
+  <text class="svg-t2" x="474" y="378">失败即静默丢包</text>
+  <line class="svg-ok" x1="660" y1="364" x2="716" y2="364" marker-end="url(#ar6)"/>
+
+  <rect class="svg-box" x="720" y="336" width="220" height="56"/>
+  <text class="svg-t" x="734" y="358">手机收到 0xFFE4 通知</text>
+  <text class="svg-t2" x="734" y="378">产品应改为 FIFO + 任务分片</text>
+</svg>
+<figcaption>图 6 · TMOS 主循环与示例服务的数据流。注意示例的 CHAR3→CHAR2 是回环桩，真正的串口透传要产品自己实现。</figcaption>
+</figure>
+
+<!-- ==================================================================== -->
+<h2>图 7 · 开发构建流程</h2>
+
+<figure>
+<svg viewBox="0 0 980 620" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="ar7" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="#4aa8ff"/>
+    </marker>
+  </defs>
+
+  <rect class="svg-rom" x="20" y="20" width="240" height="60"/>
+  <text class="svg-t" x="34" y="44">libCH572BLE_PERI.a</text>
+  <text class="svg-t2" x="34" y="64">WCH 官方静态库（54 个对象）</text>
+  <line class="svg-line" x1="260" y1="50" x2="316" y2="50" marker-end="url(#ar7)"/>
+
+  <rect class="svg-box2" x="320" y="20" width="300" height="60"/>
+  <text class="svg-t" x="334" y="44">rom_gen.py：从 CH592 头文件取 ABI</text>
+  <text class="svg-t2" x="334" y="64">生成跳转表汇编 + 应用侧头文件</text>
+
+  <text class="svg-t3" x="20" y="116">make_rom.ps1 的六趟流程</text>
+
+  <rect class="svg-box" x="20" y="130" width="440" height="46"/>
+  <text class="svg-t2" x="34" y="150">趟 1　占位链接：164 个 0 填表　★ 必须关 --gc-sections</text>
+  <text class="svg-t2" x="34" y="168">否则占位表不引用符号，协议栈会被全部裁光</text>
+
+  <rect class="svg-box" x="20" y="184" width="440" height="40"/>
+  <text class="svg-t2" x="34" y="209">趟 2　从 map 采符号地址 → 生成真实跳转表汇编</text>
+
+  <rect class="svg-box" x="20" y="232" width="440" height="40"/>
+  <text class="svg-t2" x="34" y="257">趟 3/4　开 --gc-sections 迭代链接 + 重算跳转表（收敛）</text>
+
+  <rect class="svg-box" x="20" y="280" width="440" height="40"/>
+  <text class="svg-t2" x="34" y="305">趟 5　最终链接（不再改跳转表，保证表与布局严格一致）</text>
+
+  <rect class="svg-box" x="20" y="328" width="440" height="56"/>
+  <text class="svg-t2" x="34" y="348">趟 6　objcopy 出 hex/bin + 生成 rom_ram_info.h/.ld</text>
+  <text class="svg-t2" x="34" y="368">+ 生成应用侧头文件 CH572BLE_ROM.h</text>
+
+  <line class="svg-line" x1="460" y1="356" x2="516" y2="356" marker-end="url(#ar7)"/>
+
+  <rect class="svg-ram" x="520" y="328" width="440" height="56"/>
+  <text class="svg-t3" x="534" y="350">★ rom_verify.py 就地三方校验</text>
+  <text class="svg-t2" x="534" y="370">镜像 ↔ 符号 ↔ 头文件，遍历全部 164 项；失败即 exit 1</text>
+
+  <line class="svg-line" x1="740" y1="384" x2="740" y2="418" marker-end="url(#ar7)"/>
+
+  <rect class="svg-box2" x="520" y="418" width="440" height="60"/>
+  <text class="svg-t" x="534" y="442">build.ps1 -Target rom [-DebugBuild]</text>
+  <text class="svg-t2" x="534" y="462">编应用 → 链接（不链 BLE 库）→ verify_fixed_image.py 生成合并 HEX</text>
+
+  <line class="svg-line" x1="740" y1="478" x2="740" y2="512" marker-end="url(#ar7)"/>
+
+  <rect class="svg-ram" x="520" y="512" width="440" height="60"/>
+  <text class="svg-t" x="534" y="536">run_tests.ps1 —— 37 项自检</text>
+  <text class="svg-t2" x="534" y="556">含"故意改坏槽位必须报错"的工具回归测试</text>
+
+  <rect class="svg-warn" x="20" y="418" width="440" height="154"/>
+  <text class="svg-t3" x="34" y="444" style="fill:#ffb454">改过 .ps1 之后必做</text>
+  <text class="svg-t2" x="34" y="470">编辑工具可能吃掉脚本的 UTF-8 BOM，PowerShell 5.1</text>
+  <text class="svg-t2" x="34" y="490">随后按 GBK 解析中文注释，报出一堆莫名其妙的语法错。</text>
+  <text class="svg-mono" x="34" y="518">python tools\fix_ps1_encoding.py</text>
+  <text class="svg-mono" x="34" y="542">python tools\check_ps1_syntax.py</text>
+  <text class="svg-t2" x="34" y="564">第二条已在自检里自动跑。</text>
+</svg>
+<figcaption>图 7 · ROM 镜像的生成流程。关键点：趟 1 必须关 gc，最终链接必须定死跳转表，生成后必须就地校验。</figcaption>
+</figure>
+
+<h2>为什么要五趟链接</h2>
+
+<p>跳转表的<strong>内容</strong>（每个 API 的真实地址）来自链接结果，而跳转表的<strong>长度</strong>又会影响后面所有符号的地址 —— 这是一个循环依赖。解法是迭代：</p>
+
+<table>
+<thead><tr><th>趟</th><th>做什么</th><th>为什么不能省</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>用全 0 占位表链接，采符号地址</td><td><strong>必须关 <code>--gc-sections</code></strong>：占位表不引用任何符号，开着 gc 会把协议栈整个裁掉（可用 API 从 94 掉到 14）</td></tr>
+<tr><td>2</td><td>按第 1 趟地址生成真实跳转表</td><td>表变长了，后面符号会后移</td></tr>
+<tr><td>3 / 4</td><td>开 gc 重新链接 + 重算表</td><td>开 gc 能裁掉约 14 KB 只服务主机角色的死代码；迭代两次即收敛（实测趟 2/3 产物 SHA256 完全相同）</td></tr>
+<tr><td>5</td><td>最终链接，<strong>不再动跳转表</strong></td><td>保证"表内容"与"镜像布局"严格一致，而不是差一轮迭代</td></tr>
+</tbody>
+</table>
+
+<div class="box info">
+<span class="t">占位表长度为什么写死 164</span>
+真实项数由 <code>rom_gen.py</code> 决定：以 ABI 参考头文件的最大下标 +1 为起点做 4 项对齐，
+再为 5 个扩展 API 扩容并重新对齐。参考头文件本身有重复下标（条目 137 个但最大下标 140），
+算不准，所以占位表直接取当前实测的真实项数。
+脚本会用 ABI 参考估一个下界并在不够时警告 —— 若最终链接报 <code>rom_jt size mismatch</code>，
+就调大 <code>make_rom.ps1</code> 里的 <code>$JT_PLACEHOLDER_ENTRIES</code>。
+</div>
+
+</div>
+
+<footer>
+CH572 固化协议栈工程 · 文档生成于 2026-10-10 · 所有数字来自实际构建产物测量
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CH572 固化协议栈工程 · 固件介绍</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <span class="brand">CH572 <span>固化协议栈</span></span>
+    <a href="index.html">总览</a>
+    <a href="quickstart.html">快速上手</a>
+    <a href="flow.html">运行流程图</a>
+    <a href="firmware.html" class="active">固件介绍</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<h1>固件介绍
+  <span class="sub">产物清单 · 内存地图 · 跳转表 · GATT 服务 · 能力边界</span>
+</h1>
+
+<h2>固件版本信息</h2>
+
+<table>
+<thead><tr><th>项目</th><th>值</th></tr></thead>
+<tbody>
+<tr><td>目标芯片</td><td>CH572（BLE 从机专用）</td></tr>
+<tr><td>协议栈库</td><td><code>libCH572BLE_PERI.a</code>，版本串 <code>CH572_BLE_PERI_LIB_V1.3</code></td></tr>
+<tr><td>ROM 镜像基址</td><td><code>0x00020000</code></td></tr>
+<tr><td>跳转表项数</td><td><strong>164</strong> 项</td></tr>
+<tr><td>系统主频</td><td>100 MHz（HSE 32 MHz + PLL）</td></tr>
+<tr><td>设备名</td><td><code>CH572-BLE-UART</code></td></tr>
+<tr><td>MAC（示例值）</td><td><code>C2:00:00:00:00:01</code> —— 产品必须每台唯一</td></tr>
+<tr><td>调试串口</td><td>PA3 TX / PA2 RX，115200 8N1</td></tr>
+<tr><td>实机验证</td><td><span class="badge b-ok">2026-10-10 通过</span> 广播 / 连接 / 扫描请求</td></tr>
+</tbody>
+</table>
+
+<h2>产物清单</h2>
+
+<table>
+<thead><tr><th>文件</th><th>大小</th><th>烧录地址</th><th>说明</th></tr></thead>
+<tbody>
+<tr>
+  <td><code>build/out/ble_uart-rom-debug-combined.hex</code></td>
+  <td>334,247 B</td>
+  <td>按 HEX 内置</td>
+  <td><span class="badge b-ok">首测推荐</span> 调试版应用 + 协议栈，一次下载，带完整串口日志</td>
+</tr>
+<tr>
+  <td><code>build/out/ble_uart-rom-combined.hex</code></td>
+  <td>302,207 B</td>
+  <td>按 HEX 内置</td>
+  <td>发布版应用 + 协议栈。<strong>无串口输出</strong></td>
+</tr>
+<tr>
+  <td><code>build/out/ble_uart-rom-debug.hex</code></td>
+  <td>64,087 B</td>
+  <td><code>0x00000000</code></td>
+  <td>仅调试版应用（需芯片上已有匹配 ROM 镜像）</td>
+</tr>
+<tr>
+  <td><code>build/out/ble_uart-rom.hex</code></td>
+  <td>32,317 B</td>
+  <td><code>0x00000000</code></td>
+  <td>仅发布版应用</td>
+</tr>
+<tr>
+  <td><code>lib/CH572BLE_ROM.hex</code></td>
+  <td>267,084 B</td>
+  <td><code>0x00020000</code></td>
+  <td>独立协议栈镜像（合并 HEX 已含）。换协议栈时才需要单独烧</td>
+</tr>
+<tr>
+  <td><code>build/out/ble_uart.hex</code></td>
+  <td>242,566 B</td>
+  <td><code>0x00000000</code></td>
+  <td>静态链接版对照固件，<strong>不使用 ROM 方式</strong></td>
+</tr>
+<tr>
+  <td><code>build/out/*-combined.json</code></td>
+  <td>707 B</td>
+  <td>—</td>
+  <td>SHA256、Flash/RAM 大小、验证状态清单</td>
+</tr>
+<tr>
+  <td><code>build/out/*.elf / *.map</code></td>
+  <td>—</td>
+  <td>—</td>
+  <td>调试符号与内存映射。排查时用它配合 objdump 反汇编</td>
+</tr>
+</tbody>
+</table>
+
+<div class="box info">
+<span class="t">合并 HEX 里故意留的空洞</span>
+<code>0x05CEC – 0x1FFFF</code> 是空的，其中 <code>0x1F000–0x1FFFF</code> 是 SNV 绑定信息扇区。
+不写入是有意的 —— SNV 由协议栈在运行期按需擦写，烧录时不应覆盖。
+</div>
+
+<h2>镜像内部结构</h2>
+
+<figure>
+<svg viewBox="0 0 980 400" xmlns="http://www.w3.org/2000/svg">
+  <text class="svg-t3" x="20" y="18">ROM 镜像头部（96 个 API 的唯一入口）</text>
+
+  <rect class="svg-rom" x="20" y="32" width="120" height="80"/>
+  <text class="svg-t" x="34" y="56">+0x00</text>
+  <text class="svg-t2" x="34" y="76">魔数</text>
+  <text class="svg-mono" x="34" y="96">0x43483537</text>
+
+  <rect class="svg-rom" x="140" y="32" width="120" height="80"/>
+  <text class="svg-t" x="154" y="56">+0x08</text>
+  <text class="svg-t2" x="154" y="76">UUID 表</text>
+  <text class="svg-mono" x="154" y="96">22 × 2 B</text>
+
+  <rect class="svg-rom" x="260" y="32" width="180" height="80"/>
+  <text class="svg-t" x="274" y="56">+0x34（表尾 +0x2C4）</text>
+  <text class="svg-t2" x="274" y="76">函数跳转表</text>
+  <text class="svg-mono" x="274" y="96">164 × 4 B = 656 B</text>
+
+  <rect class="svg-rom" x="440" y="32" width="150" height="80"/>
+  <text class="svg-t" x="454" y="56">+0x2C4</text>
+  <text class="svg-t2" x="454" y="76">版本字符串</text>
+  <text class="svg-mono" x="454" y="96">"CH572_BLE_…V1.3"</text>
+
+  <rect class="svg-box2" x="590" y="32" width="370" height="80"/>
+  <text class="svg-t" x="604" y="56">+0x2DC 起：代码与只读数据</text>
+  <text class="svg-t2" x="604" y="76">.text 90,752 B（含 ISP、AES、射频、TMOS、GAP、GATT、SM）</text>
+  <text class="svg-t2" x="604" y="96">.rom_version 之后全部按 4 字节对齐</text>
+
+  <text class="svg-t3" x="20" y="152">跳转表逐项构成（实测）</text>
+
+  <rect class="svg-box2" x="20" y="166" width="330" height="46"/>
+  <text class="svg-t" x="34" y="195">指向 Flash 代码　95 项</text>
+  <rect class="svg-ram" x="350" y="166" width="180" height="46"/>
+  <text class="svg-t" x="364" y="195">指向 RAM 代码　5 项</text>
+  <rect class="svg-box" x="530" y="166" width="220" height="46"/>
+  <text class="svg-t" x="544" y="195">本平台无此 API（0）　43 项</text>
+  <rect class="svg-box" x="750" y="166" width="210" height="46"/>
+  <text class="svg-t" x="764" y="195">纯预留槽（0）　21 项</text>
+
+  <rect class="svg-warn" x="20" y="228" width="470" height="150"/>
+  <text class="svg-t3" x="34" y="254" style="fill:#ffb454">5 个指向 RAM 的项要特别当心</text>
+  <text class="svg-mono" x="34" y="278">JT(1)   tmos_rand</text>
+  <text class="svg-mono" x="34" y="298">JT(2)   tmos_memcmp</text>
+  <text class="svg-mono" x="34" y="318">JT(5)   tmos_memset</text>
+  <text class="svg-mono" x="34" y="338">JT(6)   tmos_memcpy</text>
+  <text class="svg-mono" x="34" y="358">JT(144) TMOS_SystemProcess</text>
+
+  <rect class="svg-box" x="510" y="228" width="450" height="150" style="fill:#161c22"/>
+  <text class="svg-t3" x="524" y="254">它们住在 ROM 的 .highcode 里</text>
+  <text class="svg-t2" x="524" y="278">地址形如 0x200006xx / 0x2000073E，位于</text>
+  <text class="svg-t2" x="524" y="298">ROM 保留区 0x20000000 – 0x20000D44。</text>
+  <text class="svg-t2" x="524" y="326" style="fill:#ffb454">所以必须先完成 RomRam_Init() 搬运，</text>
+  <text class="svg-t2" x="524" y="346" style="fill:#ffb454">否则这些地址上是一片空白 RAM。</text>
+  <text class="svg-t2" x="524" y="368">自检会检查这些指针确实落在已搬运区间内。</text>
+</svg>
+<figcaption>图 8 · 镜像头部与跳转表构成。43 + 21 个空槽在头文件里都没有宏，误用是编译/链接期报错。</figcaption>
+</figure>
+
+<table>
+<thead><tr><th>表尾扩展项</th><th>JT 下标</th><th>作用</th></tr></thead>
+<tbody>
+<tr><td><code>TMOS_SystemProcess</code></td><td>144</td><td>主循环调度入口 —— 应用 <code>while(1)</code> 里调的就是它</td></tr>
+<tr><td><code>CH572BLE_ROM_Init</code></td><td>148</td><td>注册应用中断钩子，返回 ROM 版本串</td></tr>
+<tr><td><code>CH572BLE_ROM_GetHandles</code></td><td>152</td><td>取 ROM 的中断入口地址（转接桩 + 真 ISR 两组）</td></tr>
+<tr><td><code>FLASH_EEPROM_CMD</code></td><td>156</td><td>共享 ROM 里那份 RAM 驻留的 ISP 实现，避免应用再链一份</td></tr>
+<tr><td><code>TMOS_TimerSet</code></td><td>160</td><td>周期校准用的时钟配置接口</td></tr>
+</tbody>
+</table>
+
+<h2>GATT 服务定义</h2>
+
+<p>示例服务 UUID <code>0xFFE0</code>，包含 5 个特征。这是<strong>演示用</strong>的服务，做产品时按需替换。</p>
+
+<table>
+<thead><tr><th>特征</th><th>UUID</th><th>属性</th><th>长度</th><th>权限</th><th>用途</th></tr></thead>
+<tbody>
+<tr><td>CHAR1</td><td><code>0xFFE1</code></td><td>读 / 写</td><td>1 B</td><td>可读</td><td>读回简单参数（返回 <code>11</code>）</td></tr>
+<tr><td>CHAR2</td><td><code>0xFFE2</code></td><td>读 / 写</td><td>20 B</td><td>可读可写</td><td>通用数据缓冲区，验证普通 GATT 读写</td></tr>
+<tr><td>CHAR3</td><td><code>0xFFE3</code></td><td>只写（含无响应写）</td><td>20 B</td><td>只写</td><td>手机 → 设备（透传下行通道）</td></tr>
+<tr><td>CHAR4</td><td><code>0xFFE4</code></td><td>Notify</td><td>20 B</td><td>只读 + CCC</td><td>设备 → 手机（透传上行通道）</td></tr>
+<tr><td>CHAR5</td><td><code>0xFFE5</code></td><td>读</td><td>5 B</td><td><strong>需认证</strong></td><td>演示受保护属性，触发配对/绑定</td></tr>
+</tbody>
+</table>
+
+<div class="box warn">
+<span class="t">示例的"透传"是回环桩，不是真串口收发</span>
+当前 <code>ble_uart_service.c</code> 把手机写进 CHAR3 的数据 <code>memcpy</code> 到 CHAR2 再原样
+Notify 回去，<strong>完全没有碰 UART 外设</strong>，而且在 ATT 写回调（中断上下文）里<strong>同步</strong>发通知，
+失败就静默丢包。做产品要改成官方 <code>BLE_UART</code> 的做法：FIFO + 独立任务 + 按
+<code>ATT_MTU-3</code> 分片并重试。
+</div>
+
+<h2>内存地图（实测）</h2>
+
+<table>
+<thead><tr><th>区域</th><th>地址范围</th><th>大小</th><th>内容</th></tr></thead>
+<tbody>
+<tr><td>芯片固定</td><td><code>0x3C000 – 0x3FFFF</code></td><td>16 KB</td><td>BootLoader + INFO（含出厂 MAC），不可碰</td></tr>
+<tr><td>ROM 余量</td><td><code>0x372CC – 0x3BFFF</code></td><td>19.3 KB</td><td>留给协议栈将来变大</td></tr>
+<tr><td>协议栈镜像</td><td><code>0x20000 – 0x372CB</code></td><td>94,924 B</td><td>ROM 镜像（92.7 KB）</td></tr>
+<tr><td>SNV</td><td><code>0x1F000 – 0x1FFFF</code></td><td>4 KB</td><td>配对绑定信息，独占 1 个物理擦除扇区</td></tr>
+<tr><td>应用可用区</td><td><code>0x00000 – 0x1EFFF</code></td><td>124 KB</td><td>应用代码（当前只用 12.5 KB）</td></tr>
+</tbody>
+</table>
+
+<table>
+<thead><tr><th>SRAM 区域</th><th>地址范围</th><th>发布版</th><th>调试版</th></tr></thead>
+<tbody>
+<tr><td>ROM <code>.highcode</code></td><td><code>0x20000000 – 0x20000D43</code></td><td>3,396 B</td><td>3,396 B</td></tr>
+<tr><td>ROM <code>.data</code></td><td><code>0x20000D44 – 0x20000D6F</code></td><td>44 B</td><td>44 B</td></tr>
+<tr><td>ROM <code>.bss</code></td><td><code>0x20000D70 – 0x200011E3</code></td><td>1,140 B</td><td>1,140 B</td></tr>
+<tr><td>应用 <code>.highcode</code></td><td><code>0x200011E4 – …</code></td><td>728 B</td><td>736 B</td></tr>
+<tr><td>应用 <code>.data</code></td><td>紧随其后</td><td>520 B</td><td>628 B</td></tr>
+<tr><td>应用 <code>.bss</code></td><td>紧随其后</td><td>5,232 B</td><td>5,292 B</td></tr>
+<tr><td><strong>可用栈</strong></td><td><code>… – 0x20002FFF</code></td><td><strong>1,224 B</strong></td><td><strong>1,048 B</strong></td></tr>
+<tr><td>栈顶</td><td><code>0x20003000</code></td><td colspan="2">固定，栈向下生长</td></tr>
+</tbody>
+</table>
+
+<div class="box warn">
+<span class="t">栈是唯一的瓶颈</span>
+应用 <code>.bss</code> 的 98% 是 <code>MEM_BUF</code>（协议栈内存堆，5,120 B）。
+把它每调小 512 B，栈就多 512 B —— <strong>这是本工程唯一有效的 RAM 调优手段</strong>。
+链接脚本的下限是 1,024 B，调试版只剩 24 B 余量，任何新增全局变量都要重新确认。
+</div>
+
+<h2>能力边界</h2>
+
+<div class="grid c2">
+<div class="card">
+<h3>✅ 支持</h3>
+<ul style="margin-bottom:0">
+<li>BLE 从机（Peripheral）</li>
+<li>自定义 GATT 服务（读 / 写 / 写无响应 / Notify / Indicate）</li>
+<li>配对与绑定（LE Secure Connections，信息存 SNV）</li>
+<li>广播者（Broadcaster）</li>
+<li>连接参数更新、MTU 交换、PHY 更新、RSSI 读取</li>
+<li>2.4G 私有点对点通信</li>
+<li>周期频偏校准</li>
+</ul>
+</div>
+<div class="card">
+<h3>❌ 不支持</h3>
+<ul style="margin-bottom:0">
+<li><strong>主机（Central）</strong> —— 不能主动去连别人</li>
+<li>观察者（Observer）—— 不能主动扫描</li>
+<li>GATT 客户端（不能发现别人的服务）</li>
+<li>多从机并发连接（只支持 1 条）</li>
+<li>扩展广播 / 周期广播 / 周期同步</li>
+<li>2.4G 跳频</li>
+</ul>
+</div>
+</div>
+
+<p>头文件里的能力宏可以直接用来做条件编译：</p>
+
+<pre><code>#define CH572_BLE_HAS_PERIPHERAL        <span class="n">1</span>   <span class="c">/* 从机 */</span>
+#define CH572_BLE_HAS_BROADCASTER       <span class="n">1</span>   <span class="c">/* 广播者 */</span>
+#define CH572_BLE_HAS_CENTRAL           <span class="n">0</span>   <span class="c">/* 主机 */</span>
+#define CH572_BLE_HAS_OBSERVER          <span class="n">0</span>
+#define CH572_BLE_HAS_GATT_CLIENT       <span class="n">0</span>
+#define CH572_BLE_HAS_PERIODIC_SYNC     <span class="n">0</span>
+#define CH572_BLE_HAS_EXT_ADV           <span class="n">0</span>
+#define CH572_BLE_HAS_RF_HOPPING        <span class="n">0</span>
+#define CH572_BLE_HAS_MULTI_PERIPHERAL  <span class="n">0</span></code></pre>
+
+<div class="box info">
+<span class="t">选型规则</span>
+设备是「被别人连」→ CH572 够用。<br>
+设备要「主动去连别人」→ 必须换 CH592（它的库有 70 个对象、1,462 个符号，CH572 只有 54 / 841）。
+</div>
+
+<h2>资源占用对比</h2>
+
+<table>
+<thead><tr><th></th><th>静态库方式</th><th>ROM 方式（发布）</th><th>ROM 方式（调试）</th></tr></thead>
+<tbody>
+<tr><td>应用 .text</td><td>85,596 B</td><td>10,960 B</td><td>约 20,880 B</td></tr>
+<tr><td>应用 Flash 合计</td><td>86,220 B</td><td><strong>12,500 B</strong></td><td>23,892 B</td></tr>
+<tr><td>协议栈镜像</td><td>—（编进应用）</td><td>94,924 B</td><td>94,924 B</td></tr>
+<tr><td>芯片总代码</td><td>86,220 B</td><td>107,424 B</td><td>118,816 B</td></tr>
+<tr><td>可用栈</td><td>1,608 B</td><td>1,224 B</td><td>1,048 B</td></tr>
+<tr><td>应用单独升级</td><td>需重传 86 KB</td><td><strong>只需 12.5 KB</strong></td><td>23.9 KB</td></tr>
+</tbody>
+</table>
+
+<p><strong>结论</strong>：ROM 方式让芯片上多占约 21 KB Flash，换来应用段缩小 85%。
+只有在<strong>需要 OTA</strong> 时才划算 —— 升级包从 86 KB 降到 12.5 KB，而且升级不动协议栈。</p>
+
+<h2>未验证项</h2>
+
+<table>
+<thead><tr><th>项目</th><th>状态</th><th>风险</th></tr></thead>
+<tbody>
+<tr><td>广播 / 连接 / 扫描请求</td><td><span class="badge b-ok">已验证</span></td><td>—</td></tr>
+<tr><td>GATT 读写 / Notify</td><td><span class="badge b-info">代码就绪</span></td><td>需按快速上手第 4 节逐项实测</td></tr>
+<tr><td>配对绑定掉电保持</td><td><span class="badge b-warn">未验证</span></td><td>SNV 配置是否正确，只能靠"配对 → 断电 → 重连"验证</td></tr>
+<tr><td>长时间稳定性 / 周期校准</td><td><span class="badge b-warn">未验证</span></td><td>建议保持连接 ≥ 3 分钟，覆盖 120 秒校准周期</td></tr>
+<tr><td>运行期最大栈深</td><td><span class="badge b-warn">未验证</span></td><td>1,224 B 只是链接期静态预算，无水位检测手段</td></tr>
+<tr><td>低功耗（HAL_SLEEP）</td><td><span class="badge b-bad">未验证</span></td><td>默认关闭。打开需降堆到 4,096 B，且要确认睡眠后 VTF 寄存器是否保持</td></tr>
+<tr><td>OTA 流程</td><td><span class="badge b-bad">未实现</span></td><td>只有可行性推算（<code>tools/ota_feasibility.py</code>），无代码</td></tr>
+</tbody>
+</table>
+
+<h2>发布版与调试版的区别</h2>
+
+<table>
+<thead><tr><th></th><th>调试版（<code>-DebugBuild</code>）</th><th>发布版</th></tr></thead>
+<tbody>
+<tr><td><code>DEBUG</code> 宏</td><td>定义</td><td>不定义，<code>PRINT</code> 变成空宏</td></tr>
+<tr><td>串口输出</td><td>UART 初始化 + 全部日志</td><td>无（连 UART 都不初始化）</td></tr>
+<tr><td>SysTick</td><td>10 ms 周期中断，用于卡死检测</td><td>自由运行计数，关闭 STIE</td></tr>
+<tr><td>心跳快照</td><td>有（约 625 ms 一次）</td><td>无</td></tr>
+<tr><td>HardFault 现场打印</td><td>有（<code>mcause/mepc/mtval</code> + 栈现场）</td><td>无</td></tr>
+<tr><td>卡死检测器</td><td>有（PC 连续 3 秒不变就报警）</td><td>无</td></tr>
+<tr><td>VTF 重新武装</td><td>有（为了 BLE 中断计数）</td><td>无，中断直接进 ROM 真 ISR</td></tr>
+<tr><td>Flash 占用</td><td>23,892 B</td><td>12,500 B</td></tr>
+<tr><td>可用栈</td><td>1,048 B</td><td>1,224 B</td></tr>
+</tbody>
+</table>
+
+<div class="box ok">
+<span class="t">发布版的"静默"是设计意图，不是缺陷</span>
+发布版不初始化 UART、不打印任何东西，是为了省 Flash 和避免串口引入的功耗与干扰。
+但调试版多占 11 KB Flash、少 176 字节栈，且 SysTick 中断更频繁 ——
+<strong>两者不是同一份代码的行为</strong>，发布版必须单独上板确认。
+</div>
+
+<h2>重新生成固件的三种场景</h2>
+
+<table>
+<thead><tr><th>场景</th><th>命令</th><th>要重烧什么</th></tr></thead>
+<tbody>
+<tr><td>只改了应用代码</td><td><code>build.ps1 -Target rom</code></td><td>只烧应用 HEX（芯片上的 ROM 镜像不变）</td></tr>
+<tr><td>换了协议栈库</td><td><code>make_rom.ps1 -Lib 新库.a</code> 然后重编应用</td><td>ROM 镜像 + 应用，用合并 HEX</td></tr>
+<tr><td>改了 ROM 基址 / RAM 布局</td><td>改 <code>make_rom.ps1 -RomBase</code> + <code>Link_rom.ld</code></td><td>全部重烧，<strong>并擦掉旧 SNV</strong></td></tr>
+</tbody>
+</table>
+
+<div class="box danger">
+<span class="t">换 ROM 镜像时切记</span>
+如果 ROM 基址或镜像内容变了，<strong>必须重新烧 ROM 并重新编译应用</strong>。
+应用只检查头部魔数（<code>0x43483537</code>），如果 ROM 换了但魔数碰巧一样，
+应用会带着不匹配的跳转表继续跑 —— 跳到合法但错误的地址，症状极难排查。
+</div>
+
+</div>
+
+<footer>
+CH572 固化协议栈工程 · 文档生成于 2026-10-10 · 所有数字来自实际构建产物测量
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,73 @@
+# =============================================================================
+#  .gitattributes —— CH572 固化协议栈工程
+#
+#  ★ 核心原则：这个仓库里的字节大部分不能碰 ★
+#
+#  原因（踩过的坑）：
+#    1) .ps1 脚本**必须**带 UTF-8 BOM。没有 BOM 时 Windows PowerShell 5.1 会按
+#       系统 ANSI（中文系统是 GBK）解析，脚本里的中文注释会让它报出一堆莫名其妙
+#       的语法错误。本工程的 tools/fix_ps1_encoding.py 就是专门修这个的。
+#    2) include/RTC.h、hal/RTC.c、src/Startup/startup_CH572.S 等一批文件是
+#       **GBK 编码**的 WCH 厂商源码（原样保留，没有转成 UTF-8）。
+#    3) .ps1 文件里 CRLF 与纯 LF 混用，tools/fix_ps1_encoding.py 与
+#       tools/check_ps1_syntax.py 都在字节层面处理它们。
+#
+#  所以默认把**一切**当二进制处理（-text = 禁止行尾转换），
+#  只对确认安全的自建文档开文本模式。
+# =============================================================================
+
+# --- 默认：不转换任何行尾，不猜编码 ---
+* -text
+
+# --- 自建文档：统一存 LF，取出来也按 LF（跨平台可读，diff 干净）---
+*.md      text eol=lf
+*.html    text eol=lf
+*.css     text eol=lf
+*.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# --- 脚本与源码：显式声明不转换 ---
+#    PowerShell 脚本带 BOM 且 CRLF/LF 混用，转换会破坏 BOM 检测与语法校验。
+*.ps1     -text
+*.bat     -text
+*.cmd     -text
+
+# --- 厂商源码：GBK 编码，绝对不能转换 ---
+*.c       -text
+*.h       -text
+*.S       -text
+*.s       -text
+*.ld      -text
+
+# --- 二进制产物与库 ---
+*.a       binary
+*.lib     binary
+*.hex     binary
+*.bin     binary
+*.elf     binary
+*.o       binary
+*.map     binary
+*.pyc     binary
+
+# --- 图片 ---
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.ico     binary
+*.pdf     binary
+
+# --- 工程文件 ---
+.project    -text
+.cproject   -text
+.template   -text
+
+# --- Git 统计：把生成物标成 linguist 不统计，避免仓库语言比例失真 ---
+build/**                linguist-generated
+lib/CH572BLE_ROM.*      linguist-generated
+include/CH572BLE_ROM.h  linguist-generated
+rom/rom_stub.c          linguist-generated
+rom/rom_version.h       linguist-generated
+rom/rom_ram_info.*      linguist-generated
+*.a                     linguist-vendored
+*.pdf                   linguist-vendored
