@@ -539,7 +539,13 @@ function Get-ExampleNames {
     if ($Which -ne 'all') { return @($Which) }
     $d = Join-Path $Root 'examples'
     if (-not (Test-Path $d)) { return @() }
-    return @( Get-ChildItem -Path $d -Directory | Select-Object -ExpandProperty Name )
+    # 带 .rfonly 标记的目录不是 BLE 示例（例如 examples\rf_rom_app 走纯 RF
+    # 固定地址镜像路线，不链接 RF/BLE 库且刻意不包含 BLE 头），本脚本不处理它们，
+    # 由 scripts\make_rf_rom.ps1 + scripts\build_rf_rom_app.ps1 负责。
+    # 详见 examples\rf_rom_app\.rfonly
+    return @( Get-ChildItem -Path $d -Directory |
+              Where-Object { -not (Test-Path (Join-Path $_.FullName '.rfonly')) } |
+              Select-Object -ExpandProperty Name )
 }
 
 # ---------------------------------------------------------------------------

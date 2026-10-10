@@ -47,6 +47,35 @@ rom/rom_stub.c
 
 
 # -----------------------------------------------------------------------------
+# 二之二、纯 RF 固定地址镜像构建产物（make_rf_rom.ps1 生成）
+#
+#   与上面 BLE 那组同理，全部可确定性重建：
+#     lib/CH572RF_ROM.hex / .bin / .map / _SYMS.txt / _JT.md
+#     include/CH572RF_ROM.h          应用侧跳转表头（应用 #include 它）
+#     rom_rf/rom_rf_ram_info.h/.ld   镜像占用的 RAM 区
+#
+#   ★ 保留（不要排除）：★
+#     rom_rf/rom_rf_entry.c          镜像头部源文件
+#     rom_rf/rom_rf_link.ld          镜像链接脚本
+#     lib/libCH57xRF.a               WCH 官方纯 RF 库，外部输入
+#     include/rf/CH572rf.h           WCH 官方 RF 头，外部输入
+#
+#   注意：rom_rf/rom_rf_ram_info.* 是**文件**不是目录，所以不能用
+#   rom_rf/rom_rf_ram_info/ 这种写法。
+# -----------------------------------------------------------------------------
+lib/CH572RF_ROM.bin
+lib/CH572RF_ROM.hex
+lib/CH572RF_ROM.map
+lib/CH572RF_ROM_SYMS.txt
+lib/CH572RF_ROM_JT.md
+
+include/CH572RF_ROM.h
+
+rom_rf/rom_rf_ram_info.h
+rom_rf/rom_rf_ram_info.ld
+
+
+# -----------------------------------------------------------------------------
 # 三、静态库构建产物
 #
 #   libCH572BLE.a 是 build.ps1 -Target lib 把 src/StdPeriphDriver + hal/ +

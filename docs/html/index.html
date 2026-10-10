@@ -15,6 +15,7 @@
     <a href="quickstart.html">快速上手</a>
     <a href="flow.html">运行流程图</a>
     <a href="firmware.html">固件介绍</a>
+    <a href="rf.html">纯 RF 收发</a>
   </div>
 </nav>
 
@@ -188,6 +189,8 @@ CH572 是 WCH 的一款 BLE 从机芯片，官方只提供静态库 <code>libCH5
 <tr><td><code>build/out/ble_uart-rom.hex</code></td><td>32 KB</td><td>仅应用（调试通过后单独更新用）</td></tr>
 <tr><td><code>lib/CH572BLE_ROM.hex</code></td><td>267,084 B</td><td>独立协议栈镜像，基址 <code>0x20000</code>（合并 HEX 已含）</td></tr>
 <tr><td><code>build/out/ble_uart.hex</code></td><td>242,566 B</td><td>静态链接版对照固件，不使用 ROM 方式</td></tr>
+<tr><td><code>lib/CH572RF_ROM.hex</code></td><td>15,345 B</td><td><span class="badge b-info">纯 RF</span> RF 库镜像，烧到 <code>0x10000</code>（只烧一次）</td></tr>
+<tr><td><code>build/out/rf_rom_app-tx.hex</code></td><td>4,711 B</td><td><span class="badge b-info">纯 RF</span> 应用（<code>.text</code> 只有 1,660 B），烧到 <code>0x0</code></td></tr>
 <tr><td><code>build/out/*-combined.json</code></td><td>—</td><td>固件 SHA256、Flash/RAM 大小、验证状态</td></tr>
 </tbody>
 </table>
@@ -210,6 +213,19 @@ CH572 是 WCH 的一款 BLE 从机芯片，官方只提供静态库 <code>libCH5
   <h3>固件介绍</h3>
   <p style="margin:0;color:var(--fg-dim);font-size:14px">产物清单、内存地图、跳转表构成、GATT 服务定义、能力边界、未验证项。</p>
 </a>
+<a class="card" href="rf.html">
+  <div class="num">另一条路线</div>
+  <h3>纯 RF 收发</h3>
+  <p style="margin:0;color:var(--fg-dim);font-size:14px">不用蓝牙协议栈，只做 2.4G 点对点。RF 库做成固定地址镜像，应用独立更新。</p>
+</a>
+</div>
+
+<div class="box info">
+  <span class="t">上面 4 页讲 BLE，第 5 页是另一条独立路线</span>
+  <strong>纯 RF 收发</strong>（<a href="rf.html">rf.html</a>）链的是 WCH 的
+  <code>libCH57xRF.a</code>，不初始化 TMOS、不需要 BLE 内存堆、不涉及 GAP/GATT/SM，
+  代码量只有 BLE 方案的 <strong>1/16</strong>。<br>
+  如果你只需要 2.4G 裸收发、不需要蓝牙协议栈，从那一页看起。
 </div>
 
 <h2>其他文档</h2>
@@ -218,6 +234,8 @@ CH572 是 WCH 的一款 BLE 从机芯片，官方只提供静态库 <code>libCH5
 <tbody>
 <tr><td><a href="../../MEMORY.md">MEMORY.md</a></td><td>事实速查表：所有实测数字、四条硬约束、改东西的对照表</td></tr>
 <tr><td><a href="../CH572固化协议栈修复与测试.md">CH572固化协议栈修复与测试.md</a></td><td>修复记录、VTF 更正、低功耗状态、实机验收步骤</td></tr>
+<tr><td><a href="../协议栈API参考-peripheral.md">协议栈API参考-peripheral.md</a></td><td>只做从机时哪些协议栈 API 用得上、哪些用不上（含跳转表空槽讨论）</td></tr>
+<tr><td><a href="../纯RF收发固件.md">纯RF收发固件.md</a></td><td>纯 RF 独立协议栈镜像方式的 Markdown 版说明</td></tr>
 <tr><td><a href="../实机排查指南.md">实机排查指南.md</a></td><td>搜不到信号时的排查手册</td></tr>
 <tr><td><a href="../../README.md">README.md</a></td><td>工程入口与构建命令</td></tr>
 </tbody>

@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CH572 纯 2.4G 收发固件</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <span class="brand">CH572 <span>固件文档</span></span>
+    <a href="index.html">总览</a>
+    <a href="quickstart.html">快速上手</a>
+    <a href="flow.html">运行流程图</a>
+    <a href="firmware.html">固件介绍</a>
+    <a href="rf.html" class="active">纯 RF 收发</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<h1>CH572 纯 2.4G 收发固件
+  <span class="sub">只做射频收发，不使用蓝牙协议栈 —— 两条路线可选</span>
+</h1>
+
+<div class="box info">
+  <span class="t">这是另一条独立路线</span>
+  和前面四页讲的 BLE 固化协议栈方案<strong>没有关系</strong>：本固件链的是 WCH 的纯 RF 库
+  <code>libCH57xRF.a</code>，不初始化 TMOS、不需要 BLE 内存堆、不涉及 GAP/GATT/SM。
+</div>
+
+<h2>一、这是什么</h2>
+
+<p>WCH 的 CH572 EVT 包里有两个独立的库。本文走第二条：把 <code>libCH57xRF.a</code>
+<strong>预链接到固定地址</strong>，镜像头部放一张<strong>跳转表</strong>，
+应用从此不链接 RF 库、只通过绝对地址调用它。</p>
+
+<table>
+<thead><tr><th>库</th><th>大小</th><th>对象数</th><th>用途</th></tr></thead>
+<tbody>
+<tr><td><code>libCH572BLE_PERI.a</code></td><td>613 KB</td><td>54</td><td>完整 BLE 协议栈（前面四页讲的）</td></tr>
+<tr><td><strong><code>libCH57xRF.a</code></strong></td><td><strong>24 KB</strong></td><td><strong>4</strong></td><td><strong>纯 2.4G 收发（本页）</strong></td></tr>
+</tbody>
+</table>
+
+<h3>和 BLE 固化协议栈的体积对比</h3>
+
+<table>
+<thead><tr><th></th><th>BLE 固化协议栈</th><th>纯 RF（本方案）</th></tr></thead>
+<tbody>
+<tr><td>要烧的文件</td><td>2 个（92.7 KB 镜像 + 12.5 KB 应用）</td><td><strong>2 个（5.4 KB 镜像 + 1.7 KB 应用）</strong></td></tr>
+<tr><td>芯片代码量</td><td>105,000 B</td><td><strong>7,084 B</strong></td></tr>
+<tr><td>应用 <code>.text</code></td><td>10,960 B</td><td><strong>1,660 B</strong></td></tr>
+<tr><td>静态 RAM</td><td>6,484 B</td><td>约 3,988 B</td></tr>
+<tr><td><strong>可用栈</strong></td><td>1,224 B</td><td><strong>8,300 B</strong></td></tr>
+<tr><td>依赖协议栈</td><td>BLE + TMOS + GAP + GATT + SM + L2CAP</td><td><strong>无</strong></td></tr>
+<tr><td>BLE 内存堆</td><td>需要 <code>MEM_BUF</code> 5,120 B</td><td><strong>不需要</strong></td></tr>
+<tr><td>中断接管方式</td><td>协议栈经 PFIC VTF 抢走</td><td><strong>应用自己装向量表</strong></td></tr>
+<tr><td>能做什么</td><td>BLE 从机、GATT、配对绑定</td><td><strong>2.4G 点对点裸收发</strong></td></tr>
+</tbody>
+</table>
+
+<h3>产物与烧录</h3>
+
+<table>
+<thead><tr><th>文件</th><th>大小</th><th>烧录地址</th><th>频率</th></tr></thead>
+<tbody>
+<tr>
+  <td><code>lib/CH572RF_ROM.hex</code></td><td>15,345 B<br><span style="color:var(--fg-dim);font-size:13px">bin 5,424 B</span></td>
+  <td><strong>0x00010000</strong></td><td><strong>只烧一次</strong></td>
+</tr>
+<tr>
+  <td><code>build/out/rf_rom_app-tx.hex</code></td><td><strong>4,711 B</strong></td>
+  <td>0x00000000</td><td>以后只更新这个</td>
+</tr>
+<tr>
+  <td><code>build/out/rf_rom_app-rx.hex</code></td><td>4,740 B</td><td>0x00000000</td><td>同上</td>
+</tr>
+<tr>
+  <td><code>build/out/rf_rom_app-tx-debug.hex</code></td><td>22,682 B</td><td>0x00000000</td>
+  <td><span class="badge b-ok">对通测试用这个</span> 带串口日志</td>
+</tr>
+<tr>
+  <td><code>build/out/rf_rom_app-rx-debug.hex</code></td><td>23,296 B</td><td>0x00000000</td>
+  <td><span class="badge b-ok">对通测试用这个</span> 带串口日志</td>
+</tr>
+</tbody>
+</table>
+
+<div class="box warn">
+  <span class="t">烧录要点</span>
+  <strong>① <code>lib/CH572RF_ROM.hex</code> → <code>0x00010000</code> 起</strong>（只烧一次）<br>
+  <strong>② <code>rf_rom_app-*.hex</code> → <code>0x00000000</code> 起</strong>（以后只更新这个）<br>
+  单独更新应用时，下载器<strong>必须保留 0x10000 起的镜像</strong>。
+  整片擦除不会丢配置（纯 RF 没有 SNV），但会擦掉镜像，所以要重烧镜像。
+</div>
+
+<h2 id="scheme-b">二、架构</h2>
+
+<p>思路与 BLE 的固化协议栈<strong>完全一样</strong>：把 RF 库预链接到固定地址，
+应用不链接库、只通过跳转表调用。好处是<strong>应用里完全没有 RF 库的代码</strong>，
+以后改应用只传 1,660 字节。</p>
+
+<h3>2.1 和 BLE 那套的三个关键差异</h3>
+
+<table>
+<thead><tr><th></th><th>BLE 固化协议栈</th><th>RF 固定地址镜像</th></tr></thead>
+<tbody>
+<tr>
+  <td>跳转表槽位</td>
+  <td>必须沿用 WCH 官方下标，<strong>43 个缺失 API 要留空槽</strong></td>
+  <td><strong>13 个 API 全部可用，连续编号、零空槽</strong></td>
+</tr>
+<tr>
+  <td>为什么</td>
+  <td>官方 ABI 契约（<code>BLE_LIB_JT(48)</code> 必须还是那个函数）</td>
+  <td>RF 库<strong>没有官方 ABI 头</strong>，不受任何既有编号约束</td>
+</tr>
+<tr>
+  <td>版本串</td>
+  <td>必须自己造（要参与 <code>VER_FILE</code> 校验，造错会卡死）</td>
+  <td><strong>直接引库自己的 <code>VER_RF_LIB</code></strong>，天然一致</td>
+</tr>
+<tr><td>UUID 表</td><td>有（GATT 标准 UUID，22 项）</td><td>无</td></tr>
+<tr><td>兼容桩</td><td>有（10 个，库被裁过符号）</td><td>无（<code>nm -u</code> 为空）</td></tr>
+</tbody>
+</table>
+
+<div class="box ok">
+  <span class="t">这是本工程唯一一处"不需要为缺失 API 预留位置"的地方</span>
+  BLE 那边留空槽是被 WCH 官方 ABI 绑住的；RF 这边没有这个约束 ——
+  13 个 API 连续排，<strong>跳转表就 52 字节</strong>，零浪费。
+</div>
+
+<h3>2.2 镜像布局</h3>
+
+<figure>
+<svg viewBox="0 0 980 360" xmlns="http://www.w3.org/2000/svg">
+  <text class="svg-t3" x="0" y="16">Flash 分区</text>
+
+  <rect class="svg-ram" x="0" y="30" width="256" height="56"/>
+  <text class="svg-t"  x="14" y="54">应用可用区  64 KB</text>
+  <text class="svg-t2" x="14" y="74">0x00000 – 0x0FFFF</text>
+
+  <rect class="svg-rom" x="256" y="30" width="54" height="56"/>
+  <text class="svg-t"  x="262" y="54" style="font-size:12px">RF 镜像</text>
+  <text class="svg-t2" x="262" y="74" style="font-size:10px">5,424 B</text>
+
+  <rect class="svg-box" x="310" y="30" width="660" height="56"/>
+  <text class="svg-t"  x="324" y="54">余量  170.7 KB</text>
+  <text class="svg-t2" x="324" y="74">0x11530 – 0x3BFFF　（芯片固定占用在 0x3C000 之上 16 KB）</text>
+
+  <text class="svg-t2" x="0" y="102">0x0</text>
+  <text class="svg-t2" x="246" y="102">0x10000</text>
+  <text class="svg-t2" x="300" y="102">0x11530</text>
+
+  <text class="svg-t3" x="0" y="140">镜像内部头部（96 字节以内）</text>
+
+  <rect class="svg-rom" x="0" y="154" width="150" height="88"/>
+  <text class="svg-t"  x="14" y="178">+0x00  魔数</text>
+  <text class="svg-mono" x="14" y="198">37 35 52 46</text>
+  <text class="svg-t2" x="14" y="218">'7''5''R''F'</text>
+  <text class="svg-t2" x="14" y="236">+ 4 字节保留</text>
+
+  <rect class="svg-rom" x="150" y="154" width="200" height="88"/>
+  <text class="svg-t"  x="164" y="178">+0x08  版本串指针</text>
+  <text class="svg-mono" x="164" y="198">→ 0x000108EC</text>
+  <text class="svg-t2" x="164" y="222">指向库自己的</text>
+  <text class="svg-mono" x="164" y="238" style="font-size:10px">CH57x_RF_BASIC_LIB_V1.2.0</text>
+
+  <rect class="svg-rom" x="350" y="154" width="180" height="88"/>
+  <text class="svg-t"  x="364" y="178">+0x0C  跳转表</text>
+  <text class="svg-mono" x="364" y="198">13 项 × 4 B</text>
+  <text class="svg-t2" x="364" y="222">= 52 字节</text>
+  <text class="svg-t2" x="364" y="238" style="fill:#38d39f">零空槽</text>
+
+  <rect class="svg-box2" x="530" y="154" width="440" height="88"/>
+  <text class="svg-t"  x="544" y="178">+0x40 起  代码</text>
+  <text class="svg-t2" x="544" y="200">.text 留在 Flash（2,248 B）</text>
+  <text class="svg-t2" x="544" y="220" style="fill:#ffb454">.highcode 的 LMA 在 0x10908 —— 运行时要搬到 RAM</text>
+  <text class="svg-t2" x="544" y="238">搬到 0x20000000 起，3,112 B</text>
+
+  <text class="svg-t3" x="0" y="278">跳转表 13 项的位置分布（实测）</text>
+
+  <rect class="svg-box2" x="0" y="292" width="180" height="46"/>
+  <text class="svg-t" x="14" y="320">指向 Flash　3 项</text>
+  <rect class="svg-warn" x="184" y="292" width="240" height="46"/>
+  <text class="svg-t" x="198" y="320" style="fill:#ffb454">指向 RAM　10 项 ★</text>
+  <rect class="svg-box" x="428" y="292" width="542" height="46" style="fill:#161c22"/>
+  <text class="svg-t2" x="442" y="320">大多数项在 RAM → 应用必须先搬运 .highcode 才能调用任何 RF 函数</text>
+</svg>
+<figcaption>图 5 · 镜像布局。注意 13 项里有 10 项指向 RAM，搬运步骤不能省。</figcaption>
+</figure>
+
+<table>
+<thead><tr><th>下标</th><th>符号</th><th>位置</th></tr></thead>
+<tbody>
+<tr><td>0</td><td><code>VER_RF_LIB</code></td><td>Flash</td></tr>
+<tr><td>1</td><td><code>RFRole_BasicInit</code></td><td>Flash</td></tr>
+<tr><td>2 – 7</td><td><code>RFRole_Stop</code> / <code>Shut</code> / <code>RFIP_StartTx</code> / <code>SetRx</code> / <code>SingleChannel</code> / <code>SetTxPower</code></td><td><strong>RAM</strong></td></tr>
+<tr><td>8</td><td><code>RFIP_Calibration</code></td><td>Flash</td></tr>
+<tr><td>9 – 12</td><td><code>RFIP_WakeUpRegInit</code> / <code>ReadCrc</code> / <code>BB_LibIRQHandler</code> / <code>LLE_LibIRQHandler</code></td><td><strong>RAM</strong></td></tr>
+</tbody>
+</table>
+
+<h3>2.3 构建与烧录</h3>
+
+<pre><code><span class="c"># ① 生成镜像（只需一次；换库/换基址才要重跑）</span>
+powershell -ExecutionPolicy Bypass -File scripts\make_rf_rom.ps1
+
+<span class="c"># ② 构建应用（不链接 RF 库）</span>
+powershell -ExecutionPolicy Bypass -File scripts\build_rf_rom_app.ps1 -Role both -DebugBuild</code></pre>
+
+<p>烧录 <strong>两个文件</strong>：</p>
+
+<pre><code>① lib\CH572RF_ROM.hex                 → 0x00010000 起   <span class="c">（只烧一次）</span>
+② build\out\rf_rom_app-tx[-debug].hex → 0x00000000 起   <span class="c">（以后只更新这个）</span></code></pre>
+
+<table>
+<thead><tr><th>产物</th><th>大小</th></tr></thead>
+<tbody>
+<tr><td><code>lib/CH572RF_ROM.hex</code>（镜像）</td><td>15,345 B（bin 5,424 B）</td></tr>
+<tr><td><code>build/out/rf_rom_app-tx.hex</code>（应用）</td><td><strong>4,711 B</strong></td></tr>
+<tr><td><code>build/out/rf_rom_app-rx.hex</code>（应用）</td><td>4,740 B</td></tr>
+</tbody>
+</table>
+
+<h3>2.4 应用侧必须做对的三件事</h3>
+
+<table>
+<thead><tr><th>#</th><th>做什么</th><th>漏掉的后果</th></tr></thead>
+<tbody>
+<tr>
+  <td>1</td><td><strong>校验镜像魔数</strong>（<code>RF_RomImagePresent()</code>）</td>
+  <td>镜像没烧时会跳到空白 Flash，症状极难查</td>
+</tr>
+<tr>
+  <td>2</td><td><strong>搬运镜像 RAM</strong>（<code>RfRomRam_Init()</code>）<br>搬 3,112 B <code>.highcode</code> + 清 48 B <code>.bss</code></td>
+  <td>跳到一片空白 RAM（全 0 = 非法指令）→ HardFault</td>
+</tr>
+<tr>
+  <td>3</td><td><strong>中断走跳转表</strong>：<br><code>LLE_IRQHandler → RF_LleIrqHandler() → RF_JT(12)</code></td>
+  <td>中断悬空，收不到包</td>
+</tr>
+</tbody>
+</table>
+
+<div class="box warn">
+  <span class="t">为什么必须走跳转表，不能直接调</span>
+  镜像不参与应用的链接，<code>BB_LibIRQHandler</code> / <code>LLE_LibIRQHandler</code>
+  这些符号在应用里<strong>根本不存在</strong>，所以只能运行时从跳转表取地址。
+</div>
+
+<h3>2.5 一致性校验</h3>
+
+<pre><code><span class="c"># 镜像 / 跳转表 / 头文件 三方一致性（make_rf_rom.ps1 已自动跑）</span>
+python tools\verify_rf_rom.py --bin lib\CH572RF_ROM.bin --syms lib\CH572RF_ROM_SYMS.txt `
+    --base 0x10000 --hdr include\CH572RF_ROM.h --ram-hdr rom_rf\rom_rf_ram_info.h
+
+<span class="c"># 两条路线的实测对比</span>
+python tools\rf_rom_compare.py</code></pre>
+
+<ul>
+<li><code>make_rf_rom.ps1</code> 生成镜像后<strong>就地</strong>校验 13 项跳转表（逐项对符号地址 + 指向 RAM 的项检查落在预留区内）</li>
+<li>应用构建脚本会检查<strong>应用里不许出现 RF 库实现符号</strong> —— 防止误链接 <code>libCH57xRF.a</code></li>
+</ul>
+
+
+<h2>三、上电启动流程</h2>
+
+<figure>
+<svg viewBox="0 0 980 470" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="rfar" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="#4aa8ff"/>
+    </marker>
+  </defs>
+
+  <rect class="svg-box2" x="20" y="20" width="300" height="50"/>
+  <text class="svg-t" x="34" y="42">① _start → handle_reset</text>
+  <text class="svg-t2" x="34" y="60">startup_CH572.S，关 MIE，mtvec = 0x400</text>
+  <line class="svg-line" x1="170" y1="70" x2="170" y2="94" marker-end="url(#rfar)"/>
+
+  <rect class="svg-box2" x="20" y="94" width="300" height="50"/>
+  <text class="svg-t" x="34" y="116">② 搬应用自己的 .highcode，清 .bss</text>
+  <text class="svg-t2" x="34" y="134">startup 做，搬应用那一份（652 B）+ fence.i</text>
+  <line class="svg-line" x1="170" y1="144" x2="170" y2="168" marker-end="url(#rfar)"/>
+
+  <rect class="svg-box2" x="20" y="168" width="300" height="46"/>
+  <text class="svg-t" x="34" y="196">③ mret → main()</text>
+  <line class="svg-line" x1="170" y1="214" x2="170" y2="238" marker-end="url(#rfar)"/>
+
+  <rect class="svg-box2" x="20" y="238" width="300" height="50"/>
+  <text class="svg-t" x="34" y="260">④ 配时钟 + 串口</text>
+  <text class="svg-t2" x="34" y="278">HSE 32MHz + PLL 100MHz；PA3/PA2 115200</text>
+  <line class="svg-line" x1="170" y1="288" x2="170" y2="312" marker-end="url(#rfar)"/>
+
+  <rect class="svg-rom" x="20" y="312" width="300" height="66"/>
+  <text class="svg-t3" x="34" y="334" style="fill:#c9a0e8">⑤ 校验镜像 + 搬镜像 RAM ★</text>
+  <text class="svg-t2" x="34" y="354">RF_RomImagePresent() 查魔数</text>
+  <text class="svg-t2" x="34" y="372">RfRomRam_Init()：搬 3,112 B 到 0x20000000</text>
+  <line class="svg-line" x1="170" y1="378" x2="170" y2="402" marker-end="url(#rfar)"/>
+
+  <rect class="svg-warn" x="20" y="402" width="300" height="54"/>
+  <text class="svg-t3" x="34" y="424" style="fill:#ffb454">⑥ 射频安全访问区 ★</text>
+  <text class="svg-mono" x="34" y="444">R32_MISC_CTRL bit24-29 = 0x0E</text>
+
+  <!-- 右侧说明 -->
+  <rect class="svg-box" x="600" y="20" width="360" height="150"/>
+  <text class="svg-t3" x="616" y="46">⑤ 为什么要搬镜像的 RAM</text>
+  <text class="svg-t2" x="616" y="70">镜像里有 3,112 字节的 .highcode 必须搬到</text>
+  <text class="svg-t2" x="616" y="90">RAM 才能执行，还有 48 字节 .bss 要清零。</text>
+  <text class="svg-t2" x="616" y="116">但镜像**没有上电入口** —— 没人替它做这件事。</text>
+  <text class="svg-t2" x="616" y="140" style="fill:#ff6b6b">跳过 → 跳到空白 RAM（全 0 = 非法指令）</text>
+
+  <rect class="svg-warn" x="600" y="186" width="360" height="150"/>
+  <text class="svg-t3" x="616" y="212" style="fill:#ffb454">⑥ 的 PFIC_EnableIRQ 不能漏 ★</text>
+  <text class="svg-t2" x="616" y="236">BLE 方案里协议栈在 BB_DevInit/LLE_DevInit</text>
+  <text class="svg-t2" x="616" y="256">里自己接管中断并使能。纯 RF 库没这一步。</text>
+  <text class="svg-t2" x="616" y="282" style="fill:#ff6b6b">漏掉的症状：发送好像成功，但永远收不到。</text>
+  <text class="svg-mono" x="616" y="310">PFIC_EnableIRQ(BLEB_IRQn);</text>
+  <text class="svg-mono" x="616" y="328">PFIC_EnableIRQ(BLEL_IRQn);</text>
+
+  <rect class="svg-rom" x="600" y="352" width="360" height="104"/>
+  <text class="svg-t3" x="616" y="378">libCH57xRF.a 只有 4 个对象</text>
+  <text class="svg-mono" x="616" y="402">rf_basic.o    1,436 B      rf_ip.o    1,982 B</text>
+  <text class="svg-mono" x="616" y="424">rf_role.o       108 B      rfend.o    2,136 B</text>
+  <text class="svg-t2" x="616" y="446">合计 5,662 B，全部装进 5,424 B 的镜像</text>
+</svg>
+<figcaption>图 2 · 上电启动流程。⑤ 是本方案（固定地址镜像）特有的必做步骤。</figcaption>
+</figure>
+
+
+<h2>四、中断路径</h2>
+
+<div class="box danger">
+  <span class="t">★ 这是两条路线最容易混淆的地方 ★</span>
+  BLE 方案下，协议栈会通过 <strong>PFIC VTF</strong> 抢走 BLEB/BLEL 中断，
+  应用的向量表包装函数其实是<strong>死代码</strong>。<br>
+  <strong>纯 RF 库没有这一步</strong> —— 所以包装函数是真正生效的路径，而且必须自己使能中断。
+</div>
+
+<figure>
+<svg viewBox="0 0 980 340" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="rfar2" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="#38d39f"/>
+    </marker>
+  </defs>
+
+  <text class="svg-t3" x="20" y="18">纯 RF：走中断向量表（应用自己装的）</text>
+
+  <rect class="svg-warn" x="20" y="34" width="140" height="60"/>
+  <text class="svg-t" x="34" y="58">射频中断</text>
+  <text class="svg-t2" x="34" y="78">BLEB / BLEL</text>
+  <line class="svg-ok" x1="160" y1="64" x2="210" y2="64" marker-end="url(#rfar2)"/>
+
+  <rect class="svg-box2" x="214" y="34" width="220" height="60"/>
+  <text class="svg-t" x="228" y="58">中断向量表 0x400</text>
+  <text class="svg-t2" x="228" y="78">startup 里的弱定义被覆盖</text>
+  <line class="svg-ok" x1="434" y1="64" x2="484" y2="64" marker-end="url(#rfar2)"/>
+
+  <rect class="svg-ram" x="488" y="34" width="230" height="60"/>
+  <text class="svg-t" x="502" y="58">应用包装（.highcode）</text>
+  <text class="svg-mono" x="502" y="78">BB_IRQHandler / LLE_IRQHandler</text>
+  <line class="svg-ok" x1="718" y1="64" x2="768" y2="64" marker-end="url(#rfar2)"/>
+
+  <rect class="svg-rom" x="772" y="34" width="188" height="60"/>
+  <text class="svg-t" x="786" y="58">RF 库的真 ISR</text>
+  <text class="svg-mono" x="786" y="78">BB_LibIRQHandler</text>
+  <text class="svg-mono" x="786" y="94" style="font-size:10px">LLE_LibIRQHandler</text>
+
+  <rect class="svg-box" x="20" y="120" width="460" height="100" style="fill:#161c22"/>
+  <text class="svg-t3" x="36" y="146">中断属性必须写对</text>
+  <text class="svg-mono" x="36" y="170">__INTERRUPT __HIGH_CODE void BB_IRQHandler(void)</text>
+  <text class="svg-mono" x="36" y="190">{ BB_LibIRQHandler(); }</text>
+  <text class="svg-t2" x="36" y="210">__INTERRUPT = WCH-Interrupt-fast（硬件压栈 + mret 返回）</text>
+
+  <rect class="svg-box" x="500" y="120" width="460" height="100" style="fill:#161c22"/>
+  <text class="svg-t3" x="516" y="146">参数结构体（收发两端必须一致）</text>
+  <text class="svg-mono" x="516" y="170">accessAddress / crcInit / crcPoly</text>
+  <text class="svg-mono" x="516" y="190">frequency（kHz）/ properties（PHY + 帧格式）</text>
+  <text class="svg-t2" x="516" y="210">rfipTx_t 另有 txDMA/txLen/waitTime/txPowerVal</text>
+
+  <rect class="svg-warn" x="20" y="240" width="940" height="86"/>
+  <text class="svg-t3" x="36" y="266" style="fill:#ffb454">发送端 / 接收端的差异</text>
+  <text class="svg-t2" x="36" y="290">发送：RFIP_StartTx(&amp;g_txParam) → 完成后回调 RF_STATE_TX_FINISH</text>
+  <text class="svg-t2" x="36" y="310">接收：RFIP_SetRx(&amp;g_rxParam) → 收到回调 RF_STATE_RX。<strong>一次一收</strong>，收完/超时后要重新调用</text>
+</svg>
+<figcaption>图 3 · 纯 RF 的中断链是一条普通向量表路径，没有 VTF 那一层。</figcaption>
+</figure>
+
+
+<h2>五、可调参数</h2>
+
+<p>全部集中在 <code>examples/rf_rom_app/include/rf_rom_cfg.h</code>。</p>
+
+<table>
+<thead><tr><th>宏</th><th>默认值</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>RF_APP_ROLE</code></td><td><code>1</code>（TX）</td><td>0=接收端，1=发送端。构建脚本用 <code>-Role</code> 自动传，一般不用手改</td></tr>
+<tr><td><code>RF_APP_FREQ_KHZ</code></td><td><code>2402000</code></td><td>频点，<strong>单位 kHz，不是频道号</strong>（范围 2400000–2483500）</td></tr>
+<tr><td><code>RF_APP_ACCESS_ADDR</code></td><td><code>0x71762345</code></td><td>同步字。别用全 0/全 1，也别用 BLE 广播地址 <code>0x8E89BED6</code></td></tr>
+<tr><td><code>RF_APP_CRC_INIT</code></td><td><code>0x555555</code></td><td>CRC 初值</td></tr>
+<tr><td><code>RF_APP_CRC_POLY</code></td><td><code>0x80032D</code></td><td>CRC 多项式（24 位 BLE 标准）</td></tr>
+<tr><td><code>RF_APP_TX_POWER</code></td><td><code>LL_TX_PWR_0_DBM</code></td><td>发射功率，可选 −25 ~ +6 dBm</td></tr>
+<tr><td><code>RF_APP_PHY_MODE</code></td><td><code>PHY_MODE_2G4</code></td><td><code>PHY_MODE_PHY_1M</code> / <code>PHY_MODE_PHY_2M</code> / <code>PHY_MODE_2G4</code></td></tr>
+<tr><td><code>RF_APP_PKT_LEN</code></td><td><code>16</code></td><td>每包字节数（1M/2M PHY 上限 255）</td></tr>
+<tr><td><code>RF_APP_TX_GAP_LOOPS</code></td><td><code>2000000</code></td><td>发送间隔（粗延时循环次数）</td></tr>
+<tr><td><code>RF_APP_RX_TIMEOUT</code></td><td><code>0</code></td><td>接收超时，单位 0.5us；<code>0</code> = 不超时（一直等）</td></tr>
+</tbody>
+</table>
+
+<div class="box danger">
+  <span class="t">收发两端的频点 / 同步字 / CRC / PHY 模式必须完全一致</span>
+  任何一项不同都收不到，而且不会有任何报错 —— 就是静默收不到。
+</div>
+
+
+<h2>六、两个必须知道的坑</h2>
+
+<div class="grid c2">
+
+<div class="card">
+<div class="num">坑 1</div>
+<h3>两个头文件的 <code>LL_TX_PWR_*</code> 数值不一样</h3>
+<table style="font-size:13px;margin:10px 0">
+<thead><tr><th>宏</th><th>CH572rf.h</th><th>BLE 头</th></tr></thead>
+<tbody>
+<tr><td><code>..._MINUS_10_DBM</code></td><td><code>0x05</code></td><td><code>0x04</code></td></tr>
+<tr><td><code>..._MINUS_8_DBM</code></td><td><code>0x07</code></td><td><code>0x06</code></td></tr>
+<tr><td><code>..._MINUS_5_DBM</code></td><td><code>0x0A</code></td><td><code>0x08</code></td></tr>
+</tbody>
+</table>
+<p><strong>两个头绝对不能同时包含。</strong>重定义警告会被忽略，实际生效的是<strong>先包含的那个</strong> ——
+而 <code>libCH57xRF.a</code> 是按 RF 头的值编的，用错值就设错发射功率。</p>
+<p style="margin-bottom:0">本工程的处理：RF 头放独立目录 <code>include/rf/</code>；
+<code>rf_rom_app.c</code> <strong>刻意不 include <code>CONFIG.h</code></strong>，切断 BLE 头那条链。</p>
+</div>
+
+<div class="card">
+<div class="num">坑 2</div>
+<h3>纯 RF 库不自己接管中断</h3>
+<p>BLE 方案下协议栈通过 PFIC VTF 直接抢走 BLEB/BLEL，应用包装函数是死代码。</p>
+<p><strong>纯 RF 库没有这一步</strong>，所以必须自己写包装函数：</p>
+<pre style="margin:10px 0"><code>__INTERRUPT __HIGH_CODE
+void LLE_IRQHandler(void) { LLE_LibIRQHandler(); }
+__INTERRUPT __HIGH_CODE
+void BB_IRQHandler(void)  { BB_LibIRQHandler();  }</code></pre>
+<p style="margin-bottom:0">并显式使能 <code>PFIC_EnableIRQ(BLEB_IRQn)</code> /
+<code>PFIC_EnableIRQ(BLEL_IRQn)</code>。<br>
+<strong>漏掉的症状：发送好像成功，但接收端永远收不到。</strong></p>
+</div>
+
+</div>
+
+
+<h2>七、为什么能这么小</h2>
+
+<p>WCH 的 CH572 EVT 包里其实有<strong>两个独立的库</strong>：</p>
+
+<table>
+<thead><tr><th>库</th><th>大小</th><th>对象数</th><th>用途</th></tr></thead>
+<tbody>
+<tr><td><code>libCH572BLE_PERI.a</code></td><td>613 KB</td><td>54</td><td>完整 BLE 协议栈</td></tr>
+<tr><td><strong><code>libCH57xRF.a</code></strong></td><td><strong>24 KB</strong></td><td><strong>4</strong></td><td><strong>纯 2.4G 收发</strong></td></tr>
+</tbody>
+</table>
+
+<p><code>libCH57xRF.a</code> 只有 4 个对象（<code>rf_basic.o</code> / <code>rf_ip.o</code> /
+<code>rf_role.o</code> / <code>rfend.o</code>），代码合计 <strong>5,662 字节</strong>。
+实测它<strong>完全自足</strong>：</p>
+
+<table>
+<thead><tr><th>检查</th><th>结果</th></tr></thead>
+<tbody>
+<tr><td><code>nm -u</code> 未定义符号</td><td><span class="badge b-ok">空</span></td></tr>
+<tr><td>需要的 4 个全局变量（<code>gptrBBReg</code> 等）</td><td><span class="badge b-ok">自带</span></td></tr>
+<tr><td>是否依赖 TMOS</td><td><span class="badge b-ok">完全不依赖</span></td></tr>
+<tr><td>是否依赖 BLE 内存堆</td><td><span class="badge b-ok">不需要</span></td></tr>
+</tbody>
+</table>
+
+<h3>导出的 API</h3>
+
+<pre><code>RFRole_BasicInit(&amp;conf)    <span class="c">// 初始化，注册回调</span>
+RFIP_StartTx(&amp;txParam)     <span class="c">// 发一包</span>
+RFIP_SetRx(&amp;rxParam)       <span class="c">// 收一包（一次一收，收完要重新武装）</span>
+RFIP_SetChannel(ch)        <span class="c">// 换频道</span>
+RFRole_Stop() / RFRole_Shut()
+BB_LibIRQHandler() / LLE_LibIRQHandler()          <span class="c">// 真 ISR</span>
+RFEND_TXCtuneSet/Get() / RFIP_SetTxPower() / RFIP_Calibration()</code></pre>
+
+<div class="box warn">
+  <span class="t">为什么不能在 BLE 库里"裁"出 RF-only</span>
+  <code>RF_RoleInit</code>（BLE 库里那个）内部调 <code>BLE_IPCoreInit</code> ——
+  <strong>RF 和 BLE 共用同一套底层射频初始化</strong>。而 <code>libCH572BLE_PERI.a</code> 是预编译二进制，
+  <code>--gc-sections</code> 只能在函数级裁剪，裁不动模块级（实测只砍掉 9.6%）。<br>
+  <strong>所以正确做法是换库，不是裁库。</strong>
+</div>
+
+
+<h2>八、已知限制</h2>
+
+<table>
+<thead><tr><th>项目</th><th>状态</th></tr></thead>
+<tbody>
+<tr><td>编译 / 链接 / 指令集 / 自足性</td><td><span class="badge b-ok">已验证</span> 零警告、零未定义符号、与 CH572 指令集兼容</td></tr>
+<tr><td>镜像跳转表一致性</td><td><span class="badge b-ok">已验证</span> 13 项逐项对符号地址，0 项不匹配</td></tr>
+<tr><td>应用不含 RF 库代码</td><td><span class="badge b-ok">已验证</span> 8 个实现符号全部不存在</td></tr>
+<tr><td><strong>实机收发</strong></td><td><span class="badge b-warn">未验证</span> 需要两块板对通<strong>（两条路线都未验证）</strong></td></tr>
+<tr><td>通信距离 / 实际发射功率</td><td><span class="badge b-warn">未测</span></td></tr>
+<tr><td>丢包率 / 长时间稳定性</td><td><span class="badge b-warn">未测</span></td></tr>
+<tr><td>低功耗（睡眠收发）</td><td><span class="badge b-bad">未实现</span> 现在是纯轮询，CPU 一直跑</td></tr>
+<tr><td>精确收发周期</td><td><span class="badge b-bad">未实现</span> 现在是主循环粗延时；要精确周期请改用 TMR 中断</td></tr>
+<tr>
+  <td>镜像基址写死在应用头文件里</td>
+  <td><span class="badge b-warn">注意</span> 换镜像或改基址<strong>必须重编应用</strong>；
+  魔数校验查不出"基址对不上"这种错</td>
+</tr>
+</tbody>
+</table>
+
+<h3>上板第一步建议</h3>
+
+<ol>
+<li>烧 TX 到板 A、RX 到板 B，接好串口</li>
+<li>先看两边初始化日志 —— 确认打印出的 <code>freq</code> / <code>addr</code> 一致</li>
+<li>接收端应开始打印递增的 <code>seq</code></li>
+<li>如果收不到，按顺序查：
+  <ul>
+  <li>两端 <code>RF_APP_FREQ_KHZ</code> / <code>RF_APP_ACCESS_ADDR</code> / <code>RF_APP_PHY_MODE</code> 是否一致</li>
+  <li><code>R32_MISC_CTRL</code> 的 bit24-29 是否被设成 <code>0x0E</code></li>
+  <li>有没有漏 <code>PFIC_EnableIRQ(BLEB_IRQn/BLEL_IRQn)</code></li>
+  <li>天线是否接好（CH572 射频是内部 PA，但需要外部匹配网络）</li>
+  </ul>
+</li>
+<li>镜像方式特有的两条：
+  <ul>
+  <li>镜像烧到 <code>0x10000</code> 了吗？串口应打印
+      <code>[rf_rom] 镜像版本：CH57x_RF_BASIC_LIB_V1.2.0</code>；
+      若打印"镜像不存在或魔数不对"，就是镜像没烧或烧错地址</li>
+  <li>串口有 <code>[rf_rom] 已搬运镜像 RAM</code> 这一行吗？
+      没有就是 <code>RfRomRam_Init()</code> 被跳过或调用顺序错了</li>
+  </ul>
+</li>
+</ol>
+
+
+<h2>九、工程文件位置</h2>
+
+<table>
+<thead><tr><th>文件</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>examples/rf_rom_app/src/rf_rom_app.c</code></td><td>应用主体 — 走跳转表调用镜像</td></tr>
+<tr><td><code>examples/rf_rom_app/include/rf_rom_cfg.h</code></td><td>所有可调参数</td></tr>
+<tr><td><code>examples/rf_rom_app/.rfonly</code></td><td>标记文件 —— 让 <code>build.ps1</code> 跳过本示例</td></tr>
+<tr><td><code>rom_rf/rom_rf_link.ld</code></td><td>镜像链接脚本</td></tr>
+<tr><td><code>rom_rf/rom_rf_entry.c</code></td><td>镜像头部（魔数 + 版本串指针）</td></tr>
+<tr><td><code>rom_rf/rom_rf_ram_info.h</code> / <code>.ld</code></td><td><span class="badge b-info">自动生成</span> 镜像占用的 RAM 区</td></tr>
+<tr><td><code>tools/gen_rf_jt.py</code></td><td>跳转表 + 应用侧头文件生成器</td></tr>
+<tr><td><code>tools/gen_rf_ram_info.py</code></td><td>从镜像 ELF 提取 RAM 段信息</td></tr>
+<tr><td><code>tools/verify_rf_rom.py</code></td><td>镜像一致性校验</td></tr>
+<tr><td><code>scripts/make_rf_rom.ps1</code></td><td>生成镜像</td></tr>
+<tr><td><code>scripts/build_rf_rom_app.ps1</code></td><td>构建应用（独立于 BLE 的 <code>build.ps1</code>）</td></tr>
+<tr><td><code>src/Ld/Link_rf_rom.ld</code></td><td>应用链接脚本</td></tr>
+<tr><td><code>lib/libCH57xRF.a</code></td><td>WCH 纯 RF 库（从 EVT 包复制）</td></tr>
+<tr><td><code>include/rf/CH572rf.h</code></td><td>WCH RF 头（独立目录，避免与 BLE 头冲突）</td></tr>
+<tr><td><code>include/CH572RF_ROM.h</code></td><td><span class="badge b-info">自动生成</span> 应用侧头文件（跳转表宏）</td></tr>
+<tr><td><a href="../纯RF收发固件.md">docs/纯RF收发固件.md</a></td><td>同内容的 Markdown 版</td></tr>
+</tbody>
+</table>
+
+
+<h2>十、返回其他文档</h2>
+
+<div class="grid c3">
+<a class="card" href="index.html">
+  <div class="num">BLE 路线</div>
+  <h3>总览</h3>
+  <p style="margin:0;color:var(--fg-dim);font-size:14px">固化协议栈工程是什么、布局图、四个关键设计点。</p>
+</a>
+<a class="card" href="quickstart.html">
+  <div class="num">BLE 路线</div>
+  <h3>快速上手</h3>
+  <p style="margin:0;color:var(--fg-dim);font-size:14px">接线、烧录、串口日志逐行解读、故障对照表。</p>
+</a>
+<a class="card" href="flow.html">
+  <div class="num">BLE 路线</div>
+  <h3>运行流程图</h3>
+  <p style="margin:0;color:var(--fg-dim);font-size:14px">上电九步、PFIC VTF 中断路径、周期校准循环。</p>
+</a>
+</div>
+
+</div>
+
+<footer>
+CH572 纯 2.4G 收发固件 · 文档生成于 2026-10-10 · 所有数字来自实际构建产物测量
+</footer>
+
+</body>
+</html>

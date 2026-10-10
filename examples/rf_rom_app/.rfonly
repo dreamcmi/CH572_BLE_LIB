@@ -1,0 +1,19 @@
+这个文件是一个**标记**，内容无意义。
+
+作用：告诉 scripts\build.ps1 「本示例不是 BLE 示例，别用 BLE 的库和头去编它」。
+
+原因：
+    examples\rf_rom_app 是「通过固定地址镜像调用纯 RF 库」的应用：
+      - 链的是镜像跳转表，**不链接** libCH57xRF.a，也不链接 libCH572BLE.a
+      - 通过 include\CH572RF_ROM.h 间接包含 CH572rf.h
+      - **刻意不包含** ch572_ble.h / CONFIG.h ——
+        那些头与 CH572rf.h 对 LL_TX_PWR_* 给了不同数值
+
+    build.ps1 默认会把 examples\ 下所有子目录当成 BLE 示例来编，
+    而它的 include 路径里没有 include\rf\，所以会因找不到 CH572rf.h 而失败。
+
+正确的构建入口（两步，有先后依赖）：
+    1) powershell -ExecutionPolicy Bypass -File scripts\make_rf_rom.ps1        # 先出镜像
+    2) powershell -ExecutionPolicy Bypass -File scripts\build_rf_rom_app.ps1   # 再出应用
+
+详见 docs\纯RF收发固件.md
